@@ -287,7 +287,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
         break;
 
       case STEPS.LOCAL_PATH:
-        setCurrentEnv((prev) => ({ ...prev, remotePath: value }));
+        setCurrentEnv((prev) => ({ ...prev, remotePath: value || process.cwd() }));
         setInputValue('localhost');
         goToStep(STEPS.DB_HOST);
         break;
