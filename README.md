@@ -9,6 +9,7 @@ CLI tool for moving website files and databases between environments (local, sta
 - 🎯 WordPress support (more CMS coming soon)
 - 📂 Selective uploads (themes, plugins, uploads, core)
 - 🔒 SSH key or password authentication
+- 📝 Written in TypeScript with full type safety
 
 ## Installation
 
@@ -22,6 +23,7 @@ Or for development:
 git clone <repo>
 cd move-site
 npm install
+npm run build
 npm link
 ```
 
@@ -55,15 +57,15 @@ site-move upload production --themes --dry-run
 
 ### Available Options
 
-| Option | Description |
-|--------|-------------|
-| `--all` | Upload all files (default if no options specified) |
-| `--uploads` | Upload wp-content/uploads |
-| `--plugins` | Upload wp-content/plugins |
-| `--themes` | Upload wp-content/themes |
-| `--core` | Upload WordPress core files |
-| `--database` | Export and upload database (coming soon) |
-| `--dry-run` | Show what would be uploaded without uploading |
+| Option       | Description                                        |
+| ------------ | -------------------------------------------------- |
+| `--all`      | Upload all files (default if no options specified) |
+| `--uploads`  | Upload wp-content/uploads                          |
+| `--plugins`  | Upload wp-content/plugins                          |
+| `--themes`   | Upload wp-content/themes                           |
+| `--core`     | Upload WordPress core files                        |
+| `--database` | Export and upload database (coming soon)           |
+| `--dry-run`  | Show what would be uploaded without uploading      |
 
 ### Commands
 
@@ -101,11 +103,7 @@ The configuration file (`.move-site-config.json`) stores your environment settin
     }
   },
   "options": {
-    "excludePatterns": [
-      ".git",
-      "node_modules",
-      ".DS_Store"
-    ]
+    "excludePatterns": [".git", "node_modules", ".DS_Store"]
   }
 }
 ```

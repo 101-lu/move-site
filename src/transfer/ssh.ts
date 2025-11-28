@@ -2,21 +2,31 @@ import Client from 'ssh2-sftp-client';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
+import type {
+  EnvironmentConfig,
+  FileInfo,
+  TransferProgress,
+  TransferResult,
+  ProgressCallback,
+} from '../types/index.js';
 
 /**
  * SSH/SFTP Transfer handler
  */
 export class SSHTransfer {
-  constructor(config) {
+  private config: EnvironmentConfig;
+  private client: Client;
+  private connected: boolean = false;
+
+  constructor(config: EnvironmentConfig) {
     this.config = config;
     this.client = new Client();
-    this.connected = false;
   }
 
   /**
    * Resolve home directory in paths
    */
-  resolvePath(filePath) {
+  private resolvePath(filePath: string): string {
     if (filePath.startsWith('~')) {
       return path.join(os.homedir(), filePath.slice(1));
     }
@@ -26,11 +36,11 @@ export class SSHTransfer {
   /**
    * Connect to the remote server
    */
-  async connect() {
-    const sshConfig = {
+  async connect(): Promise<void> {
+    const sshConfig: Client.ConnectOptions = {
       host: this.config.ssh.host,
       port: this.config.ssh.port || 22,
-      username: this.config.ssh.user
+      username: this.config.ssh.user,
     };
 
     // Authentication
@@ -41,7 +51,8 @@ export class SSHTransfer {
       try {
         sshConfig.privateKey = await fs.readFile(keyPath, 'utf-8');
       } catch (error) {
-        throw new Error(`Failed to read SSH key from ${keyPath}: ${error.message}`);
+        const err = error as Error;
+        throw new Error(`Failed to read SSH key from ${keyPath}: ${err.message}`);
       }
     }
 
@@ -49,14 +60,15 @@ export class SSHTransfer {
       await this.client.connect(sshConfig);
       this.connected = true;
     } catch (error) {
-      throw new Error(`SSH connection failed: ${error.message}`);
+      const err = error as Error;
+      throw new Error(`SSH connection failed: ${err.message}`);
     }
   }
 
   /**
    * Disconnect from the server
    */
-  async disconnect() {
+  async disconnect(): Promise<void> {
     if (this.connected) {
       await this.client.end();
       this.connected = false;
@@ -66,12 +78,13 @@ export class SSHTransfer {
   /**
    * Ensure remote directory exists
    */
-  async ensureRemoteDir(remotePath) {
+  async ensureRemoteDir(remotePath: string): Promise<void> {
     try {
       await this.client.mkdir(remotePath, true);
     } catch (error) {
+      const err = error as Error;
       // Directory might already exist
-      if (!error.message.includes('already exists')) {
+      if (!err.message.includes('already exists')) {
         throw error;
       }
     }
@@ -80,7 +93,7 @@ export class SSHTransfer {
   /**
    * Upload a single file
    */
-  async uploadFile(localPath, remotePath) {
+  async uploadFile(localPath: string, remotePath: string): Promise<void> {
     const remoteDir = path.dirname(remotePath);
     await this.ensureRemoteDir(remoteDir);
     await this.client.put(localPath, remotePath);
@@ -89,21 +102,21 @@ export class SSHTransfer {
   /**
    * Upload multiple files with progress callback
    */
-  async uploadFiles(files, remotePath, onProgress) {
+  async uploadFiles(files: FileInfo[], remotePath: string, onProgress?: ProgressCallback): Promise<TransferResult> {
     let completed = 0;
     const total = files.length;
-    const errors = [];
+    const errors: Array<{ file: string; error: string }> = [];
 
     for (const file of files) {
       const remoteFilePath = path.join(remotePath, file.relativePath);
-      
+
       try {
         if (onProgress) {
           onProgress({
             type: 'start',
             file: file.relativePath,
             completed,
-            total
+            total,
           });
         }
 
@@ -115,22 +128,23 @@ export class SSHTransfer {
             type: 'complete',
             file: file.relativePath,
             completed,
-            total
+            total,
           });
         }
       } catch (error) {
+        const err = error as Error;
         errors.push({
           file: file.relativePath,
-          error: error.message
+          error: err.message,
         });
 
         if (onProgress) {
           onProgress({
             type: 'error',
             file: file.relativePath,
-            error: error.message,
+            error: err.message,
             completed,
-            total
+            total,
           });
         }
       }
@@ -139,14 +153,14 @@ export class SSHTransfer {
     return {
       completed,
       total,
-      errors
+      errors,
     };
   }
 
   /**
    * Download a single file
    */
-  async downloadFile(remotePath, localPath) {
+  async downloadFile(remotePath: string, localPath: string): Promise<void> {
     const localDir = path.dirname(localPath);
     await fs.mkdir(localDir, { recursive: true });
     await this.client.get(remotePath, localPath);
@@ -155,23 +169,14 @@ export class SSHTransfer {
   /**
    * List remote directory contents
    */
-  async listRemote(remotePath) {
+  async listRemote(remotePath: string): Promise<Client.FileInfo[]> {
     return await this.client.list(remotePath);
   }
 
   /**
    * Check if remote path exists
    */
-  async exists(remotePath) {
+  async exists(remotePath: string): Promise<string | boolean> {
     return await this.client.exists(remotePath);
-  }
-
-  /**
-   * Execute a command on the remote server
-   */
-  async exec(command) {
-    // Note: ssh2-sftp-client doesn't support exec directly
-    // For database operations, we'll need to use the base ssh2 client
-    throw new Error('Remote command execution not yet implemented');
   }
 }

@@ -1,48 +1,48 @@
 import fs from 'fs/promises';
 import path from 'path';
+import type {
+  CMSAdapter,
+  FileInfo,
+  UploadOptions,
+  WordPressFolders,
+  WordPressDBConfig,
+  DatabaseConfig,
+} from '../types/index.js';
 
 /**
  * WordPress CMS Adapter
  * Handles WordPress-specific file detection and organization
  */
-export class WordPressAdapter {
-  constructor(basePath = process.cwd()) {
+export class WordPressAdapter implements CMSAdapter {
+  public readonly name = 'wordpress';
+  public readonly basePath: string;
+
+  /** WordPress folder structure */
+  public readonly folders: WordPressFolders = {
+    uploads: 'wp-content/uploads',
+    plugins: 'wp-content/plugins',
+    themes: 'wp-content/themes',
+    muPlugins: 'wp-content/mu-plugins',
+    languages: 'wp-content/languages',
+    wpContent: 'wp-content',
+    wpAdmin: 'wp-admin',
+    wpIncludes: 'wp-includes',
+  };
+
+  /** Core files that identify WordPress */
+  public readonly coreFiles: string[] = ['wp-config.php', 'wp-load.php', 'wp-settings.php', 'wp-login.php'];
+
+  constructor(basePath: string = process.cwd()) {
     this.basePath = basePath;
-    this.name = 'wordpress';
-    
-    // WordPress folder structure
-    this.folders = {
-      uploads: 'wp-content/uploads',
-      plugins: 'wp-content/plugins',
-      themes: 'wp-content/themes',
-      muPlugins: 'wp-content/mu-plugins',
-      languages: 'wp-content/languages',
-      wpContent: 'wp-content',
-      wpAdmin: 'wp-admin',
-      wpIncludes: 'wp-includes'
-    };
-    
-    // Core files that identify WordPress
-    this.coreFiles = [
-      'wp-config.php',
-      'wp-load.php',
-      'wp-settings.php',
-      'wp-login.php'
-    ];
   }
 
   /**
    * Detect if current directory is a WordPress installation
    */
-  async detect() {
+  async detect(): Promise<boolean> {
     try {
-      // Check for wp-config.php or wp-config-sample.php
-      const hasWpConfig = await this.fileExists('wp-config.php') || 
-                          await this.fileExists('wp-config-sample.php');
-      
-      // Check for wp-content folder
+      const hasWpConfig = (await this.fileExists('wp-config.php')) || (await this.fileExists('wp-config-sample.php'));
       const hasWpContent = await this.directoryExists('wp-content');
-      
       return hasWpConfig && hasWpContent;
     } catch {
       return false;
@@ -52,7 +52,7 @@ export class WordPressAdapter {
   /**
    * Check if a file exists
    */
-  async fileExists(relativePath) {
+  async fileExists(relativePath: string): Promise<boolean> {
     try {
       const fullPath = path.join(this.basePath, relativePath);
       const stat = await fs.stat(fullPath);
@@ -65,7 +65,7 @@ export class WordPressAdapter {
   /**
    * Check if a directory exists
    */
-  async directoryExists(relativePath) {
+  async directoryExists(relativePath: string): Promise<boolean> {
     try {
       const fullPath = path.join(this.basePath, relativePath);
       const stat = await fs.stat(fullPath);
@@ -78,7 +78,7 @@ export class WordPressAdapter {
   /**
    * Get the path for a specific folder type
    */
-  getFolderPath(folderType) {
+  getFolderPath(folderType: keyof WordPressFolders): string {
     const relativePath = this.folders[folderType];
     if (!relativePath) {
       throw new Error(`Unknown folder type: ${folderType}`);
@@ -89,99 +89,103 @@ export class WordPressAdapter {
   /**
    * Get all files to upload based on options
    */
-  async getFilesToUpload(options = {}) {
-    const files = [];
-    
+  async getFilesToUpload(options: UploadOptions = {}): Promise<FileInfo[]> {
+    const files: FileInfo[] = [];
+
     // If no specific options, upload everything
-    const uploadAll = options.all || 
-      (!options.uploads && !options.plugins && !options.themes && !options.core);
-    
+    const uploadAll = options.all || (!options.uploads && !options.plugins && !options.themes && !options.core);
+
     if (uploadAll) {
-      // Get all files except excluded ones
       const allFiles = await this.getAllFiles(this.basePath);
       return allFiles;
     }
-    
+
     // Specific folder uploads
     if (options.uploads) {
       const uploadsPath = this.folders.uploads;
       if (await this.directoryExists(uploadsPath)) {
         const uploadsFiles = await this.getAllFiles(path.join(this.basePath, uploadsPath));
-        files.push(...uploadsFiles.map(f => ({
-          ...f,
-          relativePath: path.join(uploadsPath, f.relativePath)
-        })));
+        files.push(
+          ...uploadsFiles.map((f) => ({
+            ...f,
+            relativePath: path.join(uploadsPath, f.relativePath),
+          }))
+        );
       }
     }
-    
+
     if (options.plugins) {
       const pluginsPath = this.folders.plugins;
       if (await this.directoryExists(pluginsPath)) {
         const pluginsFiles = await this.getAllFiles(path.join(this.basePath, pluginsPath));
-        files.push(...pluginsFiles.map(f => ({
-          ...f,
-          relativePath: path.join(pluginsPath, f.relativePath)
-        })));
+        files.push(
+          ...pluginsFiles.map((f) => ({
+            ...f,
+            relativePath: path.join(pluginsPath, f.relativePath),
+          }))
+        );
       }
     }
-    
+
     if (options.themes) {
       const themesPath = this.folders.themes;
       if (await this.directoryExists(themesPath)) {
         const themesFiles = await this.getAllFiles(path.join(this.basePath, themesPath));
-        files.push(...themesFiles.map(f => ({
-          ...f,
-          relativePath: path.join(themesPath, f.relativePath)
-        })));
+        files.push(
+          ...themesFiles.map((f) => ({
+            ...f,
+            relativePath: path.join(themesPath, f.relativePath),
+          }))
+        );
       }
     }
-    
+
     if (options.core) {
-      // WordPress core files (excluding wp-content)
       const coreItems = await fs.readdir(this.basePath);
       for (const item of coreItems) {
         if (item === 'wp-content' || item === 'wp-config.php') continue;
-        
+
         const itemPath = path.join(this.basePath, item);
         const stat = await fs.stat(itemPath);
-        
+
         if (stat.isFile() && item.endsWith('.php')) {
           files.push({
             absolutePath: itemPath,
             relativePath: item,
-            size: stat.size
+            size: stat.size,
           });
         } else if (stat.isDirectory() && (item === 'wp-admin' || item === 'wp-includes')) {
           const dirFiles = await this.getAllFiles(itemPath);
-          files.push(...dirFiles.map(f => ({
-            ...f,
-            relativePath: path.join(item, f.relativePath)
-          })));
+          files.push(
+            ...dirFiles.map((f) => ({
+              ...f,
+              relativePath: path.join(item, f.relativePath),
+            }))
+          );
         }
       }
     }
-    
+
     return files;
   }
 
   /**
    * Recursively get all files in a directory
    */
-  async getAllFiles(dirPath, relativeTo = null) {
+  async getAllFiles(dirPath: string, relativeTo?: string): Promise<FileInfo[]> {
     const baseDir = relativeTo || dirPath;
-    const files = [];
-    
+    const files: FileInfo[] = [];
+
     const items = await fs.readdir(dirPath, { withFileTypes: true });
-    
+
     for (const item of items) {
       const fullPath = path.join(dirPath, item.name);
       const relativePath = path.relative(baseDir, fullPath);
-      
-      // Skip excluded patterns
+
       if (this.shouldExclude(item.name)) {
         continue;
       }
-      
+
       if (item.isDirectory()) {
         const subFiles = await this.getAllFiles(fullPath, baseDir);
         files.push(...subFiles);
@@ -190,28 +194,21 @@ export class WordPressAdapter {
         files.push({
           absolutePath: fullPath,
           relativePath: relativePath,
-          size: stat.size
+          size: stat.size,
         });
       }
     }
-    
+
     return files;
   }
 
   /**
    * Check if a file/folder should be excluded
    */
-  shouldExclude(name) {
-    const excludePatterns = [
-      '.git',
-      '.gitignore',
-      'node_modules',
-      '.DS_Store',
-      '.move-site-config.json',
-      'Thumbs.db'
-    ];
-    
-    return excludePatterns.some(pattern => {
+  shouldExclude(name: string): boolean {
+    const excludePatterns = ['.git', '.gitignore', 'node_modules', '.DS_Store', '.move-site-config.json', 'Thumbs.db'];
+
+    return excludePatterns.some((pattern) => {
       if (pattern.startsWith('*')) {
         return name.endsWith(pattern.slice(1));
       }
@@ -222,23 +219,31 @@ export class WordPressAdapter {
   /**
    * Parse wp-config.php to get database credentials
    */
-  async getDatabaseConfig() {
+  async getDatabaseConfig(): Promise<DatabaseConfig | null> {
     try {
       const wpConfigPath = path.join(this.basePath, 'wp-config.php');
       const content = await fs.readFile(wpConfigPath, 'utf-8');
-      
-      const extractValue = (constant) => {
+
+      const extractValue = (constant: string): string | null => {
         const regex = new RegExp(`define\\s*\\(\\s*['"]${constant}['"]\\s*,\\s*['"]([^'"]+)['"]`);
         const match = content.match(regex);
         return match ? match[1] : null;
       };
-      
+
+      const name = extractValue('DB_NAME');
+      const user = extractValue('DB_USER');
+      const password = extractValue('DB_PASSWORD');
+      const host = extractValue('DB_HOST') || 'localhost';
+
+      if (!name || !user || password === null) {
+        return null;
+      }
+
       return {
-        name: extractValue('DB_NAME'),
-        user: extractValue('DB_USER'),
-        password: extractValue('DB_PASSWORD'),
-        host: extractValue('DB_HOST') || 'localhost',
-        prefix: this.extractTablePrefix(content)
+        name,
+        user,
+        password,
+        host,
       };
     } catch {
       return null;
@@ -248,7 +253,7 @@ export class WordPressAdapter {
   /**
    * Extract table prefix from wp-config.php
    */
-  extractTablePrefix(content) {
+  extractTablePrefix(content: string): string {
     const regex = /\$table_prefix\s*=\s*['"]([^'"]+)['"]/;
     const match = content.match(regex);
     return match ? match[1] : 'wp_';
@@ -257,11 +262,11 @@ export class WordPressAdapter {
   /**
    * Get WordPress version
    */
-  async getVersion() {
+  async getVersion(): Promise<string | null> {
     try {
       const versionPath = path.join(this.basePath, 'wp-includes/version.php');
       const content = await fs.readFile(versionPath, 'utf-8');
-      
+
       const regex = /\$wp_version\s*=\s*['"]([^'"]+)['"]/;
       const match = content.match(regex);
       return match ? match[1] : null;

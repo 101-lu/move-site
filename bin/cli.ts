@@ -2,11 +2,15 @@
 
 import { program } from 'commander';
 import { createRequire } from 'module';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import { runConfigWizard, loadConfig, configExists } from '../src/config/index.js';
 import { runUpload } from '../src/commands/upload.js';
+import type { UploadOptions } from '../src/types/index.js';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
-const packageJson = require('../package.json');
+const packageJson = require(join(__dirname, '..', '..', 'package.json'));
 
 program
   .name('site-move')
@@ -18,8 +22,8 @@ program
   .command('config')
   .description('Create or update the configuration file')
   .option('-f, --force', 'Overwrite existing configuration')
-  .action(async (options) => {
-    await runConfigWizard(options.force);
+  .action(async (options: { force?: boolean }) => {
+    await runConfigWizard(options.force ?? false);
   });
 
 // Upload command
@@ -33,25 +37,25 @@ program
   .option('--core', 'Upload WordPress core files')
   .option('--database', 'Export and upload the database')
   .option('--dry-run', 'Show what would be uploaded without actually uploading')
-  .action(async (environment, options) => {
+  .action(async (environment: string, options: UploadOptions) => {
     // Check if config exists
-    if (!await configExists()) {
+    if (!(await configExists())) {
       console.log('No configuration found. Running setup wizard...\n');
       await runConfigWizard();
     }
-    
+
     const config = await loadConfig();
     if (!config) {
       console.error('Failed to load configuration. Please run: site-move config');
       process.exit(1);
     }
-    
+
     if (!config.environments[environment]) {
       console.error(`Environment "${environment}" not found in configuration.`);
       console.error(`Available environments: ${Object.keys(config.environments).join(', ')}`);
       process.exit(1);
     }
-    
+
     await runUpload(environment, options, config);
   });
 
@@ -64,7 +68,7 @@ program
   .option('--plugins', 'Download the plugins folder')
   .option('--themes', 'Download the themes folder')
   .option('--database', 'Download and import the database')
-  .action(async (environment, options) => {
+  .action(async (_environment: string, _options: UploadOptions) => {
     console.log('Download command coming soon!');
   });
 
