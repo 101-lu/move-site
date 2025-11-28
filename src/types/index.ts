@@ -192,6 +192,7 @@ export interface CMSAdapter {
  * Props for the ConfigWizard component
  */
 export interface ConfigWizardProps {
+  existingConfig?: SiteConfig | null;
   onComplete: (config: SiteConfig) => void | Promise<void>;
   onCancel: () => void;
 }

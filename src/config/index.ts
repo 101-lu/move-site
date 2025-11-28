@@ -67,16 +67,13 @@ export function createDefaultConfig(): SiteConfig {
  * Run the interactive config wizard
  */
 export async function runConfigWizard(force: boolean = false): Promise<SiteConfig | null> {
-  if (!force && (await configExists())) {
-    const existingConfig = await loadConfig();
-    console.log('Configuration file already exists.');
-    console.log('Use --force to overwrite or edit the file directly.');
-    return existingConfig;
-  }
+  // Load existing config if it exists
+  const existingConfig = await configExists() ? await loadConfig() : null;
 
   return new Promise((resolve) => {
     const { unmount } = render(
       React.createElement(ConfigWizard, {
+        existingConfig,
         onComplete: async (config: SiteConfig) => {
           const savedPath = await saveConfig(config);
           unmount();

@@ -1,4 +1,4 @@
-import { useState, FC } from 'react';
+import { useState, FC, useEffect } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import SelectInput from 'ink-select-input';
@@ -11,6 +11,7 @@ import type {
   SelectItem,
   CMSType,
   EnvironmentType,
+  EnvironmentConfig,
 } from '../types/index.js';
 
 const STEPS: Record<string, WizardStep> = {
@@ -75,32 +76,47 @@ const createInitialEnvState = (): WizardEnvironmentState => ({
   },
 });
 
-// Define step order for navigation
-const STEP_ORDER: WizardStep[] = [
-  'cms_select',
-  'site_name',
-  'env_type',
-  'ssh_host',
-  'ssh_port',
-  'ssh_user',
-  'ssh_auth_type',
-  // 'ssh_password' or 'ssh_key_path' - handled dynamically
-  'remote_path',
-  'db_host',
-  'db_name',
-  'db_user',
-  'db_password',
-  'add_another',
-  'confirm',
-];
+/**
+ * Convert an existing EnvironmentConfig to WizardEnvironmentState for editing
+ */
+const envConfigToState = (type: EnvironmentType, env: EnvironmentConfig): WizardEnvironmentState => ({
+  name: '',
+  type,
+  ssh: {
+    host: env.ssh?.host || '',
+    port: String(env.ssh?.port || 22),
+    user: env.ssh?.user || '',
+    authType: env.ssh?.password ? 'password' : 'key',
+    password: env.ssh?.password || '',
+    keyPath: env.ssh?.keyPath || '~/.ssh/id_rsa',
+  },
+  remotePath: env.remotePath || '',
+  database: {
+    host: env.database?.host || 'localhost',
+    name: env.database?.name || '',
+    user: env.database?.user || '',
+    password: env.database?.password || '',
+  },
+});
 
-export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) => {
+export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete, onCancel }) => {
   const { exit } = useApp();
-  const [step, setStep] = useState<WizardStep>(STEPS.CMS_SELECT);
+  const isEditMode = !!existingConfig?.name;
+  
+  // Determine initial step based on whether we have existing config
+  const getInitialStep = (): WizardStep => {
+    if (isEditMode) {
+      return STEPS.ENV_TYPE; // Skip to environment selection when editing
+    }
+    return STEPS.CMS_SELECT;
+  };
+
+  const [step, setStep] = useState<WizardStep>(getInitialStep());
   const [stepHistory, setStepHistory] = useState<WizardStep[]>([]);
-  const [config, setConfig] = useState<SiteConfig>(createDefaultConfig());
+  const [config, setConfig] = useState<SiteConfig>(existingConfig || createDefaultConfig());
   const [currentEnv, setCurrentEnv] = useState<WizardEnvironmentState>(createInitialEnvState());
   const [inputValue, setInputValue] = useState('');
+  const [isEditing, setIsEditing] = useState(false); // Track if we're editing an existing env
 
   // Navigate to a new step, saving current to history
   const goToStep = (newStep: WizardStep) => {
@@ -181,16 +197,33 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
 
   const handleCMSSelect = (item: SelectItem<CMSType>) => {
     setConfig((prev) => ({ ...prev, cms: item.value }));
+    setInputValue('');
     goToStep(STEPS.SITE_NAME);
   };
 
   const handleEnvTypeSelect = (item: SelectItem<EnvironmentType>) => {
-    setCurrentEnv((prev) => ({ ...prev, type: item.value }));
+    const envType = item.value;
+    const existingEnv = config.environments[envType];
+    
+    if (existingEnv) {
+      // Load existing environment data for editing
+      const envState = envConfigToState(envType, existingEnv);
+      setCurrentEnv(envState);
+      setIsEditing(true);
+    } else {
+      // New environment
+      setCurrentEnv((prev) => ({ ...createInitialEnvState(), type: envType }));
+      setIsEditing(false);
+    }
+
     // Skip SSH configuration for local environments
-    if (item.value === 'local') {
-      setInputValue(currentEnv.remotePath || process.cwd());
+    if (envType === 'local') {
+      const path = existingEnv?.remotePath || process.cwd();
+      setInputValue(path);
       goToStep(STEPS.LOCAL_PATH);
     } else {
+      const host = existingEnv?.ssh?.host || '';
+      setInputValue(host);
       goToStep(STEPS.SSH_HOST);
     }
   };
@@ -201,9 +234,10 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
       ssh: { ...prev.ssh, authType: item.value },
     }));
     if (item.value === 'password') {
+      setInputValue(currentEnv.ssh.password);
       goToStep(STEPS.SSH_PASSWORD);
     } else {
-      setInputValue(currentEnv.ssh.keyPath);
+      setInputValue(currentEnv.ssh.keyPath || '~/.ssh/id_rsa');
       goToStep(STEPS.SSH_KEY_PATH);
     }
   };
@@ -212,9 +246,10 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
     if (item.value) {
       setCurrentEnv(createInitialEnvState());
       setInputValue('');
+      setIsEditing(false);
       // Reset history for new environment
       setStepHistory([]);
-      setStep(STEPS.SITE_NAME);
+      setStep(STEPS.ENV_TYPE);
     } else {
       goToStep(STEPS.CONFIRM);
     }
@@ -241,7 +276,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
           ...prev,
           ssh: { ...prev.ssh, host: value },
         }));
-        setInputValue(currentEnv.ssh.port);
+        setInputValue(currentEnv.ssh.port || '22');
         goToStep(STEPS.SSH_PORT);
         break;
 
@@ -250,7 +285,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
           ...prev,
           ssh: { ...prev.ssh, port: value || '22' },
         }));
-        setInputValue('');
+        setInputValue(currentEnv.ssh.user);
         goToStep(STEPS.SSH_USER);
         break;
 
@@ -267,7 +302,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
           ...prev,
           ssh: { ...prev.ssh, password: value },
         }));
-        setInputValue('');
+        setInputValue(currentEnv.remotePath);
         goToStep(STEPS.REMOTE_PATH);
         break;
 
@@ -276,19 +311,19 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
           ...prev,
           ssh: { ...prev.ssh, keyPath: value || '~/.ssh/id_rsa' },
         }));
-        setInputValue('');
+        setInputValue(currentEnv.remotePath);
         goToStep(STEPS.REMOTE_PATH);
         break;
 
       case STEPS.REMOTE_PATH:
         setCurrentEnv((prev) => ({ ...prev, remotePath: value }));
-        setInputValue('localhost');
+        setInputValue(currentEnv.database.host || 'localhost');
         goToStep(STEPS.DB_HOST);
         break;
 
       case STEPS.LOCAL_PATH:
         setCurrentEnv((prev) => ({ ...prev, remotePath: value || process.cwd() }));
-        setInputValue('localhost');
+        setInputValue(currentEnv.database.host || 'localhost');
         goToStep(STEPS.DB_HOST);
         break;
 
@@ -297,7 +332,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
           ...prev,
           database: { ...prev.database, host: value || 'localhost' },
         }));
-        setInputValue('');
+        setInputValue(currentEnv.database.name);
         goToStep(STEPS.DB_NAME);
         break;
 
@@ -306,7 +341,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
           ...prev,
           database: { ...prev.database, name: value },
         }));
-        setInputValue('');
+        setInputValue(currentEnv.database.user);
         goToStep(STEPS.DB_USER);
         break;
 
@@ -315,7 +350,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
           ...prev,
           database: { ...prev.database, user: value },
         }));
-        setInputValue('');
+        setInputValue(currentEnv.database.password);
         goToStep(STEPS.DB_PASSWORD);
         break;
 
@@ -376,6 +411,17 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
     </Box>
   );
 
+  // Build environment type options with indicators for existing envs
+  const getEnvTypeOptions = (): SelectItem<EnvironmentType>[] => {
+    return ENV_TYPE_OPTIONS.map((opt) => {
+      const exists = !!config.environments[opt.value];
+      return {
+        label: exists ? `${opt.label} ✓` : `${opt.label} (new)`,
+        value: opt.value,
+      };
+    });
+  };
+
   const renderStep = () => {
     switch (step) {
       case STEPS.CMS_SELECT:
@@ -395,9 +441,11 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
         return (
           <Box flexDirection="column">
             <Text bold color="cyan">
-              Select environment type:
+              Select environment to {isEditMode ? 'add or edit' : 'configure'}:
             </Text>
-            <SelectInput items={ENV_TYPE_OPTIONS} onSelect={handleEnvTypeSelect} />
+            <Text dimColor>(✓ = existing, will be edited)</Text>
+            <Text> </Text>
+            <SelectInput items={getEnvTypeOptions()} onSelect={handleEnvTypeSelect} />
           </Box>
         );
 
@@ -405,7 +453,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
         return renderTextInput('SSH Host (e.g., example.com or 192.168.1.100):');
 
       case STEPS.SSH_PORT:
-        return renderTextInput('SSH Port (default: 22):', '22');
+        return renderTextInput('SSH Port:', '22');
 
       case STEPS.SSH_USER:
         return renderTextInput('SSH Username:');
@@ -416,7 +464,11 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
             <Text bold color="cyan">
               Authentication method:
             </Text>
-            <SelectInput items={AUTH_TYPE_OPTIONS} onSelect={handleAuthTypeSelect} />
+            <SelectInput 
+              items={AUTH_TYPE_OPTIONS} 
+              onSelect={handleAuthTypeSelect}
+              initialIndex={currentEnv.ssh.authType === 'password' ? 1 : 0}
+            />
           </Box>
         );
 
@@ -424,7 +476,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
         return renderPasswordInput('SSH Password:');
 
       case STEPS.SSH_KEY_PATH:
-        return renderTextInput('Path to SSH key (default: ~/.ssh/id_rsa):', '~/.ssh/id_rsa');
+        return renderTextInput('Path to SSH key:', '~/.ssh/id_rsa');
 
       case STEPS.REMOTE_PATH:
         return renderTextInput('Remote path to website (e.g., /var/www/html):');
@@ -433,7 +485,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
         return renderTextInput('Local path to website:', process.cwd());
 
       case STEPS.DB_HOST:
-        return renderTextInput('Database host (default: localhost):', 'localhost');
+        return renderTextInput('Database host:', 'localhost');
 
       case STEPS.DB_NAME:
         return renderTextInput('Database name:');
@@ -447,10 +499,10 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
       case STEPS.ADD_ANOTHER:
         return (
           <Box flexDirection="column">
-            <Text color="green">✓ Environment "{currentEnv.type}" added!</Text>
+            <Text color="green">✓ Environment "{currentEnv.type}" {isEditing ? 'updated' : 'added'}!</Text>
             <Text> </Text>
             <Text bold color="cyan">
-              Add another environment?
+              Add or edit another environment?
             </Text>
             <SelectInput items={YES_NO_OPTIONS} onSelect={handleAddAnotherSelect} />
           </Box>
@@ -464,7 +516,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
             </Text>
             <Text>Site: {config.name}</Text>
             <Text>CMS: {config.cms}</Text>
-            <Text>Environments: {Object.keys(config.environments).join(', ')}</Text>
+            <Text>Environments: {Object.keys(config.environments).join(', ') || 'none'}</Text>
             <Text> </Text>
             <Text bold color="cyan">
               Save this configuration?
@@ -478,13 +530,30 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
     }
   };
 
-  return (
-    <Box flexDirection="column" padding={1}>
+  // Header shows different info in edit mode
+  const renderHeader = () => {
+    if (isEditMode) {
+      return (
+        <Box flexDirection="column" marginBottom={1}>
+          <Text bold color="cyan">
+            🎁 Site Move - Edit Configuration
+          </Text>
+          <Text>Site: <Text color="green">{config.name}</Text> ({config.cms})</Text>
+        </Box>
+      );
+    }
+    return (
       <Box marginBottom={1}>
         <Text bold color="cyan">
           🎁 Site Move - Configuration Wizard
         </Text>
       </Box>
+    );
+  };
+
+  return (
+    <Box flexDirection="column" padding={1}>
+      {renderHeader()}
       <Text dimColor>{canGoBack ? 'Press ESC or ← to go back' : 'Press ESC to cancel'}</Text>
       <Text> </Text>
       {renderStep()}
