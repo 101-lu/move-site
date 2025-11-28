@@ -24,6 +24,7 @@ const STEPS: Record<string, WizardStep> = {
   SSH_PASSWORD: 'ssh_password',
   SSH_KEY_PATH: 'ssh_key_path',
   REMOTE_PATH: 'remote_path',
+  LOCAL_PATH: 'local_path',
   DB_HOST: 'db_host',
   DB_NAME: 'db_name',
   DB_USER: 'db_user',
@@ -127,6 +128,9 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
       case STEPS.SSH_HOST:
         setInputValue(currentEnv.ssh.host);
         break;
+      case STEPS.LOCAL_PATH:
+        setInputValue(currentEnv.remotePath || process.cwd());
+        break;
       case STEPS.SSH_PORT:
         setInputValue(currentEnv.ssh.port);
         break;
@@ -182,7 +186,13 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
 
   const handleEnvTypeSelect = (item: SelectItem<EnvironmentType>) => {
     setCurrentEnv((prev) => ({ ...prev, type: item.value }));
-    goToStep(STEPS.SSH_HOST);
+    // Skip SSH configuration for local environments
+    if (item.value === 'local') {
+      setInputValue(currentEnv.remotePath || process.cwd());
+      goToStep(STEPS.LOCAL_PATH);
+    } else {
+      goToStep(STEPS.SSH_HOST);
+    }
   };
 
   const handleAuthTypeSelect = (item: SelectItem<'key' | 'password'>) => {
@@ -276,6 +286,12 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
         goToStep(STEPS.DB_HOST);
         break;
 
+      case STEPS.LOCAL_PATH:
+        setCurrentEnv((prev) => ({ ...prev, remotePath: value }));
+        setInputValue('localhost');
+        goToStep(STEPS.DB_HOST);
+        break;
+
       case STEPS.DB_HOST:
         setCurrentEnv((prev) => ({
           ...prev,
@@ -308,23 +324,28 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
           ...currentEnv,
           database: { ...currentEnv.database, password: value },
         };
+        // Build environment config - SSH is optional for local environments
+        const envConfig: any = {
+          type: finalEnv.type,
+          remotePath: finalEnv.remotePath,
+          database: finalEnv.database,
+        };
+        // Only add SSH config for non-local environments
+        if (finalEnv.type !== 'local') {
+          envConfig.ssh = {
+            host: finalEnv.ssh.host,
+            port: parseInt(finalEnv.ssh.port, 10),
+            user: finalEnv.ssh.user,
+            ...(finalEnv.ssh.authType === 'password'
+              ? { password: finalEnv.ssh.password }
+              : { keyPath: finalEnv.ssh.keyPath }),
+          };
+        }
         setConfig((prev) => ({
           ...prev,
           environments: {
             ...prev.environments,
-            [currentEnv.name]: {
-              type: finalEnv.type,
-              ssh: {
-                host: finalEnv.ssh.host,
-                port: parseInt(finalEnv.ssh.port, 10),
-                user: finalEnv.ssh.user,
-                ...(finalEnv.ssh.authType === 'password'
-                  ? { password: finalEnv.ssh.password }
-                  : { keyPath: finalEnv.ssh.keyPath }),
-              },
-              remotePath: finalEnv.remotePath,
-              database: finalEnv.database,
-            },
+            [currentEnv.name]: envConfig,
           },
         }));
         goToStep(STEPS.ADD_ANOTHER);
@@ -409,6 +430,9 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
       case STEPS.REMOTE_PATH:
         return renderTextInput('Remote path to website (e.g., /var/www/html):');
 
+      case STEPS.LOCAL_PATH:
+        return renderTextInput('Local path to website:', process.cwd());
+
       case STEPS.DB_HOST:
         return renderTextInput('Database host (default: localhost):', 'localhost');
 
@@ -457,13 +481,11 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
   return (
     <Box flexDirection="column" padding={1}>
       <Box marginBottom={1}>
-        <Text bold color="magenta">
-          🚀 Site Move - Configuration Wizard
+        <Text bold color="cyan">
+          🎁 Site Move - Configuration Wizard
         </Text>
       </Box>
-      <Text dimColor>
-        {canGoBack ? 'Press ESC or ← to go back' : 'Press ESC to cancel'}
-      </Text>
+      <Text dimColor>{canGoBack ? 'Press ESC or ← to go back' : 'Press ESC to cancel'}</Text>
       <Text> </Text>
       {renderStep()}
     </Box>

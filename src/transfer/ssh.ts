@@ -19,6 +19,9 @@ export class SSHTransfer {
   private connected: boolean = false;
 
   constructor(config: EnvironmentConfig) {
+    if (!config.ssh) {
+      throw new Error('SSH configuration is required for remote transfers');
+    }
     this.config = config;
     this.client = new Client();
   }
@@ -37,17 +40,18 @@ export class SSHTransfer {
    * Connect to the remote server
    */
   async connect(): Promise<void> {
+    const ssh = this.config.ssh!; // Validated in constructor
     const sshConfig: Client.ConnectOptions = {
-      host: this.config.ssh.host,
-      port: this.config.ssh.port || 22,
-      username: this.config.ssh.user,
+      host: ssh.host,
+      port: ssh.port || 22,
+      username: ssh.user,
     };
 
     // Authentication
-    if (this.config.ssh.password) {
-      sshConfig.password = this.config.ssh.password;
-    } else if (this.config.ssh.keyPath) {
-      const keyPath = this.resolvePath(this.config.ssh.keyPath);
+    if (ssh.password) {
+      sshConfig.password = ssh.password;
+    } else if (ssh.keyPath) {
+      const keyPath = this.resolvePath(ssh.keyPath);
       try {
         sshConfig.privateKey = await fs.readFile(keyPath, 'utf-8');
       } catch (error) {

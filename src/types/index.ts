@@ -38,10 +38,11 @@ export type EnvironmentType = 'production' | 'test' | 'development' | 'local';
 
 /**
  * Single environment configuration
+ * Note: ssh is optional for local environments
  */
 export interface EnvironmentConfig {
   type: EnvironmentType;
-  ssh: SSHConfig;
+  ssh?: SSHConfig;
   remotePath: string;
   database: DatabaseConfig;
 }
@@ -273,6 +274,7 @@ export type WizardStep =
   | 'ssh_password'
   | 'ssh_key_path'
   | 'remote_path'
+  | 'local_path'
   | 'db_host'
   | 'db_name'
   | 'db_user'

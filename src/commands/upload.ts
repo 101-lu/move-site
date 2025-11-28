@@ -65,7 +65,15 @@ export async function runUpload(environment: string, options: UploadOptions, con
     return;
   }
 
-  // Connect and upload
+  // Check if this is a local environment
+  if (envConfig.type === 'local' || !envConfig.ssh) {
+    console.log('\n📁 Local environment - copying files locally...');
+    // TODO: Implement local file copy
+    console.log(`   Would copy ${files.length} files to ${envConfig.remotePath}`);
+    return;
+  }
+
+  // Connect and upload via SSH
   console.log(`\n🔌 Connecting to ${envConfig.ssh.host}...`);
 
   const transfer = new SSHTransfer(envConfig);
