@@ -123,7 +123,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
   const restoreInputValue = (targetStep: WizardStep) => {
     switch (targetStep) {
       case STEPS.SITE_NAME:
-        setInputValue(currentEnv.name);
+        setInputValue(config.name);
         break;
       case STEPS.SSH_HOST:
         setInputValue(currentEnv.ssh.host);
@@ -231,7 +231,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
   const handleTextSubmit = (value: string) => {
     switch (step) {
       case STEPS.SITE_NAME:
-        setCurrentEnv((prev) => ({ ...prev, name: value }));
+        setConfig((prev) => ({ ...prev, name: value }));
         setInputValue('');
         goToStep(STEPS.ENV_TYPE);
         break;
@@ -326,7 +326,6 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
         };
         // Build environment config - SSH is optional for local environments
         const envConfig: any = {
-          type: finalEnv.type,
           remotePath: finalEnv.remotePath,
           database: finalEnv.database,
         };
@@ -345,7 +344,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
           ...prev,
           environments: {
             ...prev.environments,
-            [currentEnv.name]: envConfig,
+            [currentEnv.type]: envConfig,
           },
         }));
         goToStep(STEPS.ADD_ANOTHER);
@@ -396,7 +395,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
         return (
           <Box flexDirection="column">
             <Text bold color="cyan">
-              Environment type for "{currentEnv.name}":
+              Select environment type:
             </Text>
             <SelectInput items={ENV_TYPE_OPTIONS} onSelect={handleEnvTypeSelect} />
           </Box>
@@ -448,7 +447,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
       case STEPS.ADD_ANOTHER:
         return (
           <Box flexDirection="column">
-            <Text color="green">✓ Environment "{currentEnv.name}" added!</Text>
+            <Text color="green">✓ Environment "{currentEnv.type}" added!</Text>
             <Text> </Text>
             <Text bold color="cyan">
               Add another environment?
@@ -463,6 +462,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
             <Text bold color="cyan">
               Configuration Summary:
             </Text>
+            <Text>Site: {config.name}</Text>
             <Text>CMS: {config.cms}</Text>
             <Text>Environments: {Object.keys(config.environments).join(', ')}</Text>
             <Text> </Text>

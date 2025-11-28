@@ -54,6 +54,7 @@ export async function saveConfig(config: SiteConfig): Promise<string> {
 export function createDefaultConfig(): SiteConfig {
   return {
     version: '1.0',
+    name: '',
     cms: 'wordpress' as CMSType,
     environments: {},
     options: {

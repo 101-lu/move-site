@@ -41,7 +41,6 @@ export type EnvironmentType = 'production' | 'test' | 'development' | 'local';
  * Note: ssh is optional for local environments
  */
 export interface EnvironmentConfig {
-  type: EnvironmentType;
   ssh?: SSHConfig;
   remotePath: string;
   database: DatabaseConfig;
@@ -64,8 +63,9 @@ export type CMSType = 'wordpress' | 'drupal' | 'custom';
  */
 export interface SiteConfig {
   version: string;
+  name: string;
   cms: CMSType;
-  environments: Record<string, EnvironmentConfig>;
+  environments: Partial<Record<EnvironmentType, EnvironmentConfig>>;
   options: ConfigOptions;
 }
 

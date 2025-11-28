@@ -1,6 +1,6 @@
 import { getAdapter } from '../cms/index.js';
 import { SSHTransfer } from '../transfer/ssh.js';
-import type { SiteConfig, UploadOptions, FileInfo, CMSAdapter } from '../types/index.js';
+import type { SiteConfig, UploadOptions, FileInfo, CMSAdapter, EnvironmentType } from '../types/index.js';
 
 interface FileCategories {
   Themes: FileInfo[];
@@ -14,7 +14,13 @@ interface FileCategories {
  * Upload files to a remote environment
  */
 export async function runUpload(environment: string, options: UploadOptions, config: SiteConfig): Promise<void> {
-  const envConfig = config.environments[environment];
+  const envConfig = config.environments[environment as EnvironmentType];
+
+  if (!envConfig) {
+    console.error(`❌ Environment "${environment}" not found in configuration.`);
+    console.error(`Available environments: ${Object.keys(config.environments).join(', ') || 'none'}`);
+    process.exit(1);
+  }
 
   console.log(`\n📤 Uploading to ${environment}...\n`);
 
@@ -65,8 +71,8 @@ export async function runUpload(environment: string, options: UploadOptions, con
     return;
   }
 
-  // Check if this is a local environment
-  if (envConfig.type === 'local' || !envConfig.ssh) {
+  // Check if this is a local environment (no SSH config means local)
+  if (environment === 'local' || !envConfig.ssh) {
     console.log('\n📁 Local environment - copying files locally...');
     // TODO: Implement local file copy
     console.log(`   Would copy ${files.length} files to ${envConfig.remotePath}`);

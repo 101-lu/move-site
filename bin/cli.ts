@@ -6,7 +6,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { runConfigWizard, loadConfig, configExists } from '../src/config/index.js';
 import { runUpload } from '../src/commands/upload.js';
-import type { UploadOptions } from '../src/types/index.js';
+import type { UploadOptions, EnvironmentType } from '../src/types/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -50,7 +50,7 @@ program
       process.exit(1);
     }
 
-    if (!config.environments[environment]) {
+    if (!config.environments[environment as EnvironmentType]) {
       console.error(`Environment "${environment}" not found in configuration.`);
       console.error(`Available environments: ${Object.keys(config.environments).join(', ')}`);
       process.exit(1);
