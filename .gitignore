@@ -1,3 +1,6 @@
+# Config file with credentials
+.move-site-config.json
+
 # Logs
 logs
 *.log
