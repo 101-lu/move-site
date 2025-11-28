@@ -1,4 +1,4 @@
-import React, { useState, FC } from 'react';
+import { useState, FC } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import SelectInput from 'ink-select-input';
@@ -15,7 +15,7 @@ import type {
 
 const STEPS: Record<string, WizardStep> = {
   CMS_SELECT: 'cms_select',
-  ENV_NAME: 'env_name',
+  SITE_NAME: 'site_name',
   ENV_TYPE: 'env_type',
   SSH_HOST: 'ssh_host',
   SSH_PORT: 'ssh_port',
@@ -39,7 +39,7 @@ const CMS_OPTIONS: SelectItem<CMSType>[] = [
 
 const ENV_TYPE_OPTIONS: SelectItem<EnvironmentType>[] = [
   { label: 'Production', value: 'production' },
-  { label: 'Staging / Test', value: 'staging' },
+  { label: 'Staging / Test', value: 'test' },
   { label: 'Development', value: 'development' },
   { label: 'Local', value: 'local' },
 ];
@@ -56,7 +56,7 @@ const YES_NO_OPTIONS: SelectItem<boolean>[] = [
 
 const createInitialEnvState = (): WizardEnvironmentState => ({
   name: '',
-  type: 'staging',
+  type: 'test',
   ssh: {
     host: '',
     port: '22',
@@ -74,27 +74,115 @@ const createInitialEnvState = (): WizardEnvironmentState => ({
   },
 });
 
+// Define step order for navigation
+const STEP_ORDER: WizardStep[] = [
+  'cms_select',
+  'site_name',
+  'env_type',
+  'ssh_host',
+  'ssh_port',
+  'ssh_user',
+  'ssh_auth_type',
+  // 'ssh_password' or 'ssh_key_path' - handled dynamically
+  'remote_path',
+  'db_host',
+  'db_name',
+  'db_user',
+  'db_password',
+  'add_another',
+  'confirm',
+];
+
 export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) => {
   const { exit } = useApp();
   const [step, setStep] = useState<WizardStep>(STEPS.CMS_SELECT);
+  const [stepHistory, setStepHistory] = useState<WizardStep[]>([]);
   const [config, setConfig] = useState<SiteConfig>(createDefaultConfig());
   const [currentEnv, setCurrentEnv] = useState<WizardEnvironmentState>(createInitialEnvState());
   const [inputValue, setInputValue] = useState('');
 
+  // Navigate to a new step, saving current to history
+  const goToStep = (newStep: WizardStep) => {
+    setStepHistory((prev) => [...prev, step]);
+    setStep(newStep);
+  };
+
+  // Go back to previous step
+  const goBack = () => {
+    if (stepHistory.length > 0) {
+      const previousStep = stepHistory[stepHistory.length - 1];
+      setStepHistory((prev) => prev.slice(0, -1));
+      setStep(previousStep);
+      // Restore input value based on the step we're going back to
+      restoreInputValue(previousStep);
+    }
+  };
+
+  // Restore the input value when going back
+  const restoreInputValue = (targetStep: WizardStep) => {
+    switch (targetStep) {
+      case STEPS.SITE_NAME:
+        setInputValue(currentEnv.name);
+        break;
+      case STEPS.SSH_HOST:
+        setInputValue(currentEnv.ssh.host);
+        break;
+      case STEPS.SSH_PORT:
+        setInputValue(currentEnv.ssh.port);
+        break;
+      case STEPS.SSH_USER:
+        setInputValue(currentEnv.ssh.user);
+        break;
+      case STEPS.SSH_PASSWORD:
+        setInputValue(currentEnv.ssh.password);
+        break;
+      case STEPS.SSH_KEY_PATH:
+        setInputValue(currentEnv.ssh.keyPath);
+        break;
+      case STEPS.REMOTE_PATH:
+        setInputValue(currentEnv.remotePath);
+        break;
+      case STEPS.DB_HOST:
+        setInputValue(currentEnv.database.host);
+        break;
+      case STEPS.DB_NAME:
+        setInputValue(currentEnv.database.name);
+        break;
+      case STEPS.DB_USER:
+        setInputValue(currentEnv.database.user);
+        break;
+      case STEPS.DB_PASSWORD:
+        setInputValue(currentEnv.database.password);
+        break;
+      default:
+        setInputValue('');
+    }
+  };
+
+  const canGoBack = stepHistory.length > 0;
+
   useInput((input, key) => {
     if (key.escape) {
-      onCancel();
+      if (canGoBack) {
+        goBack();
+      } else {
+        onCancel();
+      }
+    }
+    // Also support left arrow to go back
+    if (key.leftArrow && canGoBack) {
+      goBack();
     }
   });
 
   const handleCMSSelect = (item: SelectItem<CMSType>) => {
     setConfig((prev) => ({ ...prev, cms: item.value }));
-    setStep(STEPS.ENV_NAME);
+    goToStep(STEPS.SITE_NAME);
   };
 
   const handleEnvTypeSelect = (item: SelectItem<EnvironmentType>) => {
     setCurrentEnv((prev) => ({ ...prev, type: item.value }));
-    setStep(STEPS.SSH_HOST);
+    goToStep(STEPS.SSH_HOST);
   };
 
   const handleAuthTypeSelect = (item: SelectItem<'key' | 'password'>) => {
@@ -103,10 +191,10 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
       ssh: { ...prev.ssh, authType: item.value },
     }));
     if (item.value === 'password') {
-      setStep(STEPS.SSH_PASSWORD);
+      goToStep(STEPS.SSH_PASSWORD);
     } else {
       setInputValue(currentEnv.ssh.keyPath);
-      setStep(STEPS.SSH_KEY_PATH);
+      goToStep(STEPS.SSH_KEY_PATH);
     }
   };
 
@@ -114,9 +202,11 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
     if (item.value) {
       setCurrentEnv(createInitialEnvState());
       setInputValue('');
-      setStep(STEPS.ENV_NAME);
+      // Reset history for new environment
+      setStepHistory([]);
+      setStep(STEPS.SITE_NAME);
     } else {
-      setStep(STEPS.CONFIRM);
+      goToStep(STEPS.CONFIRM);
     }
   };
 
@@ -130,10 +220,10 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
 
   const handleTextSubmit = (value: string) => {
     switch (step) {
-      case STEPS.ENV_NAME:
+      case STEPS.SITE_NAME:
         setCurrentEnv((prev) => ({ ...prev, name: value }));
         setInputValue('');
-        setStep(STEPS.ENV_TYPE);
+        goToStep(STEPS.ENV_TYPE);
         break;
 
       case STEPS.SSH_HOST:
@@ -142,7 +232,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
           ssh: { ...prev.ssh, host: value },
         }));
         setInputValue(currentEnv.ssh.port);
-        setStep(STEPS.SSH_PORT);
+        goToStep(STEPS.SSH_PORT);
         break;
 
       case STEPS.SSH_PORT:
@@ -151,7 +241,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
           ssh: { ...prev.ssh, port: value || '22' },
         }));
         setInputValue('');
-        setStep(STEPS.SSH_USER);
+        goToStep(STEPS.SSH_USER);
         break;
 
       case STEPS.SSH_USER:
@@ -159,7 +249,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
           ...prev,
           ssh: { ...prev.ssh, user: value },
         }));
-        setStep(STEPS.SSH_AUTH_TYPE);
+        goToStep(STEPS.SSH_AUTH_TYPE);
         break;
 
       case STEPS.SSH_PASSWORD:
@@ -168,7 +258,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
           ssh: { ...prev.ssh, password: value },
         }));
         setInputValue('');
-        setStep(STEPS.REMOTE_PATH);
+        goToStep(STEPS.REMOTE_PATH);
         break;
 
       case STEPS.SSH_KEY_PATH:
@@ -177,13 +267,13 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
           ssh: { ...prev.ssh, keyPath: value || '~/.ssh/id_rsa' },
         }));
         setInputValue('');
-        setStep(STEPS.REMOTE_PATH);
+        goToStep(STEPS.REMOTE_PATH);
         break;
 
       case STEPS.REMOTE_PATH:
         setCurrentEnv((prev) => ({ ...prev, remotePath: value }));
         setInputValue('localhost');
-        setStep(STEPS.DB_HOST);
+        goToStep(STEPS.DB_HOST);
         break;
 
       case STEPS.DB_HOST:
@@ -192,7 +282,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
           database: { ...prev.database, host: value || 'localhost' },
         }));
         setInputValue('');
-        setStep(STEPS.DB_NAME);
+        goToStep(STEPS.DB_NAME);
         break;
 
       case STEPS.DB_NAME:
@@ -201,7 +291,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
           database: { ...prev.database, name: value },
         }));
         setInputValue('');
-        setStep(STEPS.DB_USER);
+        goToStep(STEPS.DB_USER);
         break;
 
       case STEPS.DB_USER:
@@ -210,7 +300,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
           database: { ...prev.database, user: value },
         }));
         setInputValue('');
-        setStep(STEPS.DB_PASSWORD);
+        goToStep(STEPS.DB_PASSWORD);
         break;
 
       case STEPS.DB_PASSWORD:
@@ -237,7 +327,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
             },
           },
         }));
-        setStep(STEPS.ADD_ANOTHER);
+        goToStep(STEPS.ADD_ANOTHER);
         break;
     }
   };
@@ -278,8 +368,8 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
           </Box>
         );
 
-      case STEPS.ENV_NAME:
-        return renderTextInput('Environment name (e.g., production, staging, test):');
+      case STEPS.SITE_NAME:
+        return renderTextInput('Site name:');
 
       case STEPS.ENV_TYPE:
         return (
@@ -371,7 +461,9 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ onComplete, onCancel }) =>
           🚀 Site Move - Configuration Wizard
         </Text>
       </Box>
-      <Text dimColor>Press ESC to cancel</Text>
+      <Text dimColor>
+        {canGoBack ? 'Press ESC or ← to go back' : 'Press ESC to cancel'}
+      </Text>
       <Text> </Text>
       {renderStep()}
     </Box>

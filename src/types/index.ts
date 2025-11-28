@@ -34,7 +34,7 @@ export interface DatabaseConfig {
 /**
  * Environment type classification
  */
-export type EnvironmentType = 'production' | 'staging' | 'development' | 'local';
+export type EnvironmentType = 'production' | 'test' | 'development' | 'local';
 
 /**
  * Single environment configuration
@@ -264,7 +264,7 @@ export interface WizardEnvironmentState {
  */
 export type WizardStep =
   | 'cms_select'
-  | 'env_name'
+  | 'site_name'
   | 'env_type'
   | 'ssh_host'
   | 'ssh_port'
