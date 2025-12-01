@@ -522,19 +522,20 @@ export async function restoreBackup(
               
               // If files owner is configured, check and update ownership if needed
               const filesOwner = envConfig.ssh?.filesOwner;
+              const filesGroup = envConfig.ssh?.filesGroup || filesOwner;
               if (filesOwner) {
-                // Check current owner of a file in the directory
+                // Check if any files have incorrect ownership
                 const checkOwnerResult = await transfer.exec(
-                  `stat -c '%U' "${envConfig.remotePath}" 2>/dev/null || stat -f '%Su' "${envConfig.remotePath}" 2>/dev/null`
+                  `find "${envConfig.remotePath}" ! -user ${filesOwner} 2>/dev/null | head -1`
                 );
-                const currentOwner = checkOwnerResult.stdout.trim();
+                const hasWrongOwner = checkOwnerResult.stdout.trim().length > 0;
                 
-                if (currentOwner === filesOwner) {
-                  console.log(`\n✅ File ownership already correct: ${filesOwner}`);
+                if (!hasWrongOwner) {
+                  console.log(`\n✅ File ownership already correct: ${filesOwner}:${filesGroup}`);
                 } else {
-                  console.log(`\n🔧 Changing file ownership from '${currentOwner}' to '${filesOwner}'...`);
+                  console.log(`\n🔧 Setting file ownership to '${filesOwner}:${filesGroup}'...`);
                   const chownResult = await transfer.exec(
-                    `chown -R ${filesOwner}:${filesOwner} "${envConfig.remotePath}" 2>&1`
+                    `chown -R ${filesOwner}:${filesGroup} "${envConfig.remotePath}" 2>&1`
                   );
                   if (chownResult.code !== 0) {
                     console.log(`   ⚠️  Could not change ownership (may require sudo): ${chownResult.stderr || chownResult.stdout}`);

@@ -25,6 +25,7 @@ const STEPS: Record<string, WizardStep> = {
   SSH_PASSWORD: 'ssh_password',
   SSH_KEY_PATH: 'ssh_key_path',
   SSH_FILES_OWNER: 'ssh_files_owner',
+  SSH_FILES_GROUP: 'ssh_files_group',
   REMOTE_PATH: 'remote_path',
   LOCAL_PATH: 'local_path',
   DB_HOST: 'db_host',
@@ -69,6 +70,7 @@ const createInitialEnvState = (): WizardEnvironmentState => ({
     password: '',
     keyPath: '~/.ssh/id_rsa',
     filesOwner: '',
+    filesGroup: '',
   },
   remotePath: '',
   database: {
@@ -94,6 +96,7 @@ const envConfigToState = (type: EnvironmentType, env: EnvironmentConfig): Wizard
     password: env.ssh?.password || '',
     keyPath: env.ssh?.keyPath || '~/.ssh/id_rsa',
     filesOwner: env.ssh?.filesOwner || '',
+    filesGroup: env.ssh?.filesGroup || '',
   },
   remotePath: env.remotePath || '',
   database: {
@@ -146,6 +149,17 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
     return ''; // No default
   };
 
+  // Helper to get existing files group from any configured environment
+  const getExistingFilesGroup = (): string => {
+    const envs = Object.values(config.environments);
+    for (const env of envs) {
+      if (env?.ssh?.filesGroup) {
+        return env.ssh.filesGroup;
+      }
+    }
+    return ''; // No default
+  };
+
   // Navigate to a new step, saving current to history
   const goToStep = (newStep: WizardStep) => {
     setStepHistory((prev) => [...prev, step]);
@@ -189,6 +203,9 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
         break;
       case STEPS.SSH_FILES_OWNER:
         setInputValue(currentEnv.ssh.filesOwner);
+        break;
+      case STEPS.SSH_FILES_GROUP:
+        setInputValue(currentEnv.ssh.filesGroup);
         break;
       case STEPS.REMOTE_PATH:
         setInputValue(currentEnv.remotePath);
@@ -357,6 +374,22 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
           ...prev,
           ssh: { ...prev.ssh, filesOwner: value },
         }));
+        // If owner is set, ask for group (default to same as owner)
+        if (value) {
+          setInputValue(currentEnv.ssh.filesGroup || getExistingFilesGroup() || value);
+          goToStep(STEPS.SSH_FILES_GROUP);
+        } else {
+          // No owner, skip group too
+          setInputValue(currentEnv.remotePath);
+          goToStep(STEPS.REMOTE_PATH);
+        }
+        break;
+
+      case STEPS.SSH_FILES_GROUP:
+        setCurrentEnv((prev) => ({
+          ...prev,
+          ssh: { ...prev.ssh, filesGroup: value },
+        }));
         setInputValue(currentEnv.remotePath);
         goToStep(STEPS.REMOTE_PATH);
         break;
@@ -452,6 +485,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
           ? { password: envState.ssh.password }
           : { keyPath: envState.ssh.keyPath }),
         ...(envState.ssh.filesOwner ? { filesOwner: envState.ssh.filesOwner } : {}),
+        ...(envState.ssh.filesGroup ? { filesGroup: envState.ssh.filesGroup } : {}),
       };
     }
     setConfig((prev) => ({
@@ -559,6 +593,14 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
           <Box flexDirection="column">
             {renderTextInput('Files owner username (leave empty to keep SSH user):', currentEnv.ssh.user)}
             <Text dimColor>Used to chown uploaded files to a different user (e.g., www-data for PHP)</Text>
+          </Box>
+        );
+
+      case STEPS.SSH_FILES_GROUP:
+        return (
+          <Box flexDirection="column">
+            {renderTextInput('Files owner group:', currentEnv.ssh.filesOwner)}
+            <Text dimColor>Group for chown (e.g., www-data). Defaults to the owner username if left empty.</Text>
           </Box>
         );
 

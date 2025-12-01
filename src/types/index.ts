@@ -20,6 +20,8 @@ export interface SSHConfig {
   keyPath?: string;
   /** Owner username for uploaded files (for chown). If not set, files keep the SSH user ownership */
   filesOwner?: string;
+  /** Owner group for uploaded files (for chown). If not set, uses filesOwner value */
+  filesGroup?: string;
 }
 
 /**
@@ -256,6 +258,7 @@ export interface WizardEnvironmentState {
     password: string;
     keyPath: string;
     filesOwner: string;
+    filesGroup: string;
   };
   remotePath: string;
   database: {
@@ -281,6 +284,7 @@ export type WizardStep =
   | 'ssh_password'
   | 'ssh_key_path'
   | 'ssh_files_owner'
+  | 'ssh_files_group'
   | 'remote_path'
   | 'local_path'
   | 'db_host'

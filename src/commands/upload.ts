@@ -109,6 +109,31 @@ export async function runUpload(environment: string, options: UploadOptions, con
         console.log(`   - ${err.file}: ${err.error}`);
       });
     }
+
+    // If files owner is configured, check and update ownership if needed
+    const filesOwner = envConfig.ssh?.filesOwner;
+    const filesGroup = envConfig.ssh?.filesGroup || filesOwner;
+    if (filesOwner) {
+      // Check if any files have incorrect ownership
+      const checkOwnerResult = await transfer.exec(
+        `find "${envConfig.remotePath}" ! -user ${filesOwner} 2>/dev/null | head -1`
+      );
+      const hasWrongOwner = checkOwnerResult.stdout.trim().length > 0;
+
+      if (!hasWrongOwner) {
+        console.log(`\n✅ File ownership already correct: ${filesOwner}:${filesGroup}`);
+      } else {
+        console.log(`\n🔧 Setting file ownership to '${filesOwner}:${filesGroup}'...`);
+        const chownResult = await transfer.exec(
+          `chown -R ${filesOwner}:${filesGroup} "${envConfig.remotePath}" 2>&1`
+        );
+        if (chownResult.code !== 0) {
+          console.log(`   ⚠️  Could not change ownership (may require sudo): ${chownResult.stderr || chownResult.stdout}`);
+        } else {
+          console.log('   ✅ Ownership updated');
+        }
+      }
+    }
   } catch (error) {
     const err = error as Error;
     console.error(`\n❌ Upload failed: ${err.message}`);
