@@ -58,7 +58,7 @@ export function createDefaultConfig(): SiteConfig {
     cms: 'wordpress' as CMSType,
     environments: {},
     options: {
-      excludePatterns: ['.git', '.gitignore', 'node_modules', '.DS_Store', '*.log', '.move-site-config.json'],
+      excludePatterns: ['.git', '.gitignore', 'node_modules', '.DS_Store', '*.log', '.move-site-config.json', 'backups'],
     },
   };
 }

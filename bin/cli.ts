@@ -6,6 +6,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { runConfigWizard, loadConfig, configExists } from '../src/config/index.js';
 import { runUpload } from '../src/commands/upload.js';
+import { runBackup, listBackups } from '../src/commands/backup.js';
 import type { UploadOptions, EnvironmentType } from '../src/types/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -57,6 +58,43 @@ program
     }
 
     await runUpload(environment, options, config);
+  });
+
+// Backup command
+program
+  .command('backup <environment>')
+  .description('Create a backup of files on a remote environment before uploading')
+  .option('--all', 'Backup all files (excluding backups folder)')
+  .option('--uploads', 'Backup the uploads folder (wp-content/uploads)')
+  .option('--plugins', 'Backup the plugins folder (wp-content/plugins)')
+  .option('--themes', 'Backup the themes folder (wp-content/themes)')
+  .option('--core', 'Backup WordPress core files')
+  .option('--dry-run', 'Show what would be backed up without creating backups')
+  .option('--list', 'List existing backups on the environment')
+  .action(async (environment: string, options: UploadOptions & { list?: boolean }) => {
+    // Check if config exists
+    if (!(await configExists())) {
+      console.log('No configuration found. Running setup wizard...\n');
+      await runConfigWizard();
+    }
+
+    const config = await loadConfig();
+    if (!config) {
+      console.error('Failed to load configuration. Please run: move-site config');
+      process.exit(1);
+    }
+
+    if (!config.environments[environment as EnvironmentType]) {
+      console.error(`Environment "${environment}" not found in configuration.`);
+      console.error(`Available environments: ${Object.keys(config.environments).join(', ')}`);
+      process.exit(1);
+    }
+
+    if (options.list) {
+      await listBackups(environment, config);
+    } else {
+      await runBackup(environment, options, config);
+    }
   });
 
 // Download command (placeholder for future)

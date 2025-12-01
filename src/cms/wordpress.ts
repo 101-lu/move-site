@@ -206,7 +206,15 @@ export class WordPressAdapter implements CMSAdapter {
    * Check if a file/folder should be excluded
    */
   shouldExclude(name: string): boolean {
-    const excludePatterns = ['.git', '.gitignore', 'node_modules', '.DS_Store', '.move-site-config.json', 'Thumbs.db'];
+    const excludePatterns = [
+      '.git',
+      '.gitignore',
+      'node_modules',
+      '.DS_Store',
+      '.move-site-config.json',
+      'Thumbs.db',
+      'backups',
+    ];
 
     return excludePatterns.some((pattern) => {
       if (pattern.startsWith('*')) {
