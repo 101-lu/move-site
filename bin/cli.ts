@@ -6,7 +6,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { runConfigWizard, loadConfig, configExists } from '../src/config/index.js';
 import { runUpload } from '../src/commands/upload.js';
-import { runBackup, listBackups, deleteBackups, downloadBackups } from '../src/commands/backup.js';
+import { runBackup, listBackups, deleteBackups, downloadBackups, restoreBackup } from '../src/commands/backup.js';
 import type { UploadOptions, EnvironmentType } from '../src/types/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -115,6 +115,16 @@ backupCmd
   .action(async (environment: string, options: { all?: boolean; output: string }) => {
     const config = await getConfigForEnv(environment);
     await downloadBackups(environment, config, options.all, options.output);
+  });
+
+// backup restore
+backupCmd
+  .command('restore <environment>')
+  .description('Restore files from a backup on a remote environment')
+  .option('--dry-run', 'Show what would be restored without actually restoring')
+  .action(async (environment: string, options: { dryRun?: boolean }) => {
+    const config = await getConfigForEnv(environment);
+    await restoreBackup(environment, config, options.dryRun);
   });
 
 // Download command (placeholder for future)

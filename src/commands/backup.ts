@@ -419,3 +419,146 @@ export async function downloadBackups(
     await transfer.disconnect();
   }
 }
+
+/**
+ * Restore files from a backup on the remote environment
+ */
+export async function restoreBackup(
+  environment: string,
+  config: SiteConfig,
+  dryRun: boolean = false
+): Promise<void> {
+  const envConfig = config.environments[environment as EnvironmentType];
+
+  if (!envConfig?.ssh) {
+    console.error('❌ Restore backup is only available for remote environments.');
+    process.exit(1);
+  }
+
+  console.log(`\n🔄 Restore backup on ${environment}...\n`);
+  console.log(`🔌 Connecting to ${envConfig.ssh.host}...`);
+
+  const transfer = new SSHTransfer(envConfig);
+
+  try {
+    await transfer.connect();
+    console.log('✅ Connected!\n');
+
+    const backupsDir = `${envConfig.remotePath}/backups`;
+    const backups = await getBackupsList(transfer, backupsDir);
+
+    if (backups.length === 0) {
+      console.log('   No backups found to restore.');
+      return;
+    }
+
+    // Interactive single selection
+    await new Promise<void>((resolve) => {
+      const { unmount } = render(
+        React.createElement(BackupSelector, {
+          backups,
+          action: 'restore',
+          singleSelect: true,
+          onSelect: async (selected: BackupFile[]) => {
+            unmount();
+            const backup = selected[0];
+
+            if (dryRun) {
+              console.log(`\n🔍 Dry run - would restore from: ${backup.name}`);
+              console.log(`   Archive: ${backup.fullPath}`);
+              console.log(`   Target: ${envConfig.remotePath}`);
+              
+              // Show contents of the archive
+              console.log('\n   Contents:');
+              const listResult = await transfer.exec(`tar -tzf "${backup.fullPath}" | head -20`);
+              if (listResult.code === 0) {
+                const files = listResult.stdout.trim().split('\n');
+                for (const file of files) {
+                  console.log(`     ${file}`);
+                }
+                if (files.length >= 20) {
+                  console.log('     ... (more files)');
+                }
+              }
+              resolve();
+              return;
+            }
+
+            console.log(`\n⚠️  This will overwrite existing files!`);
+            console.log(`   Backup: ${backup.name} (${backup.size})`);
+            console.log(`   Target: ${envConfig.remotePath}`);
+            console.log('');
+
+            // Confirmation
+            const readline = await import('readline');
+            const rl = readline.createInterface({
+              input: process.stdin,
+              output: process.stdout,
+            });
+
+            const answer = await new Promise<string>((res) => {
+              rl.question('Are you sure you want to restore this backup? (yes/no): ', res);
+            });
+            rl.close();
+
+            if (answer.toLowerCase() !== 'yes') {
+              console.log('\n❌ Cancelled.');
+              resolve();
+              return;
+            }
+
+            console.log('\n🔄 Restoring backup...');
+
+            // Extract the backup
+            // Use -C to change to the target directory
+            // The backup was created from the remotePath, so we extract there
+            const extractCmd = `cd "${envConfig.remotePath}" && tar -xzf "${backup.fullPath}"`;
+            const result = await transfer.exec(extractCmd);
+
+            if (result.code !== 0) {
+              console.error(`\n❌ Restore failed: ${result.stderr}`);
+            } else {
+              console.log(`\n✅ Restored successfully from: ${backup.name}`);
+              
+              // If files owner is configured, check and update ownership if needed
+              const filesOwner = envConfig.ssh?.filesOwner;
+              if (filesOwner) {
+                // Check current owner of a file in the directory
+                const checkOwnerResult = await transfer.exec(
+                  `stat -c '%U' "${envConfig.remotePath}" 2>/dev/null || stat -f '%Su' "${envConfig.remotePath}" 2>/dev/null`
+                );
+                const currentOwner = checkOwnerResult.stdout.trim();
+                
+                if (currentOwner === filesOwner) {
+                  console.log(`\n✅ File ownership already correct: ${filesOwner}`);
+                } else {
+                  console.log(`\n🔧 Changing file ownership from '${currentOwner}' to '${filesOwner}'...`);
+                  const chownResult = await transfer.exec(
+                    `chown -R ${filesOwner}:${filesOwner} "${envConfig.remotePath}" 2>&1`
+                  );
+                  if (chownResult.code !== 0) {
+                    console.log(`   ⚠️  Could not change ownership (may require sudo): ${chownResult.stderr || chownResult.stdout}`);
+                  } else {
+                    console.log('   ✅ Ownership updated');
+                  }
+                }
+              }
+            }
+            resolve();
+          },
+          onCancel: () => {
+            unmount();
+            console.log('\n❌ Cancelled.');
+            resolve();
+          },
+        })
+      );
+    });
+  } catch (error) {
+    const err = error as Error;
+    console.error(`\n❌ Restore failed: ${err.message}`);
+    process.exit(1);
+  } finally {
+    await transfer.disconnect();
+  }
+}

@@ -11,14 +11,16 @@ export interface BackupSelectorProps {
   backups: BackupFile[];
   onSelect: (selected: BackupFile[]) => void;
   onCancel: () => void;
-  action: 'delete' | 'download';
+  action: 'delete' | 'download' | 'restore';
+  singleSelect?: boolean;
 }
 
 /**
  * Interactive backup selector component
  * Allows multi-select with space, confirm with enter
+ * Or single-select mode for restore
  */
-export const BackupSelector: FC<BackupSelectorProps> = ({ backups, onSelect, onCancel, action }) => {
+export const BackupSelector: FC<BackupSelectorProps> = ({ backups, onSelect, onCancel, action, singleSelect = false }) => {
   const { exit } = useApp();
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [cursorIndex, setCursorIndex] = useState(0);
@@ -39,8 +41,8 @@ export const BackupSelector: FC<BackupSelectorProps> = ({ backups, onSelect, onC
       return;
     }
 
-    // Space to toggle selection
-    if (input === ' ') {
+    // Space to toggle selection (multi-select mode only)
+    if (input === ' ' && !singleSelect) {
       setSelectedIndices((prev) => {
         const newSet = new Set(prev);
         if (newSet.has(cursorIndex)) {
@@ -53,8 +55,8 @@ export const BackupSelector: FC<BackupSelectorProps> = ({ backups, onSelect, onC
       return;
     }
 
-    // 'a' to select/deselect all
-    if (input === 'a') {
+    // 'a' to select/deselect all (multi-select mode only)
+    if (input === 'a' && !singleSelect) {
       setSelectedIndices((prev) => {
         if (prev.size === backups.length) {
           return new Set();
@@ -66,7 +68,10 @@ export const BackupSelector: FC<BackupSelectorProps> = ({ backups, onSelect, onC
 
     // Enter to confirm
     if (key.return) {
-      if (selectedIndices.size === 0) {
+      if (singleSelect) {
+        // Single select mode: use cursor position
+        onSelect([backups[cursorIndex]]);
+      } else if (selectedIndices.size === 0) {
         onCancel();
       } else {
         const selected = Array.from(selectedIndices).map((i) => backups[i]);
@@ -76,24 +81,27 @@ export const BackupSelector: FC<BackupSelectorProps> = ({ backups, onSelect, onC
     }
   });
 
-  const actionVerb = action === 'delete' ? 'delete' : 'download';
-  const actionColor = action === 'delete' ? 'red' : 'green';
+  const actionVerb = action === 'delete' ? 'delete' : action === 'restore' ? 'restore' : 'download';
+  const actionColor = action === 'delete' ? 'red' : action === 'restore' ? 'yellow' : 'green';
 
   return (
     <Box flexDirection="column" padding={1}>
       <Box marginBottom={1}>
         <Text bold color="cyan">
-          📦 Select backups to {actionVerb}:
+          📦 Select backup to {actionVerb}:
         </Text>
       </Box>
       
       <Text dimColor>
-        ↑/↓ Navigate • Space: Toggle • A: Select all • Enter: Confirm • ESC: Cancel
+        {singleSelect 
+          ? '↑/↓ Navigate • Enter: Confirm • ESC: Cancel'
+          : '↑/↓ Navigate • Space: Toggle • A: Select all • Enter: Confirm • ESC: Cancel'
+        }
       </Text>
       <Text> </Text>
 
       {backups.map((backup, index) => {
-        const isSelected = selectedIndices.has(index);
+        const isSelected = singleSelect ? index === cursorIndex : selectedIndices.has(index);
         const isCursor = index === cursorIndex;
         
         return (
@@ -113,10 +121,14 @@ export const BackupSelector: FC<BackupSelectorProps> = ({ backups, onSelect, onC
         );
       })}
 
-      <Text> </Text>
-      <Text dimColor>
-        {selectedIndices.size} of {backups.length} selected
-      </Text>
+      {!singleSelect && (
+        <>
+          <Text> </Text>
+          <Text dimColor>
+            {selectedIndices.size} of {backups.length} selected
+          </Text>
+        </>
+      )}
     </Box>
   );
 };
