@@ -1,5 +1,6 @@
 import { getAdapter } from '../cms/index.js';
 import { SSHTransfer } from '../transfer/ssh.js';
+import { runBackup } from './backup.js';
 import type { SiteConfig, UploadOptions, FileInfo, CMSAdapter, EnvironmentType } from '../types/index.js';
 
 interface FileCategories {
@@ -77,6 +78,24 @@ export async function runUpload(environment: string, options: UploadOptions, con
     // TODO: Implement local file copy
     console.log(`   Would copy ${files.length} files to ${envConfig.remotePath}`);
     return;
+  }
+
+  // Create backup before uploading (unless --no-backup is set)
+  // Note: Commander.js converts --no-backup to options.backup (true by default, false when flag is used)
+  if (options.backup !== false) {
+    console.log('\n💾 Creating backup before upload...');
+    // Create backup options matching what we're uploading
+    const backupOptions: UploadOptions = {
+      all: options.all,
+      uploads: options.uploads,
+      plugins: options.plugins,
+      themes: options.themes,
+      core: options.core,
+    };
+    await runBackup(environment, backupOptions, config);
+    console.log(''); // Add spacing after backup
+  } else {
+    console.log('\n⚠️  Skipping backup (--no-backup flag set)');
   }
 
   // Connect and upload via SSH

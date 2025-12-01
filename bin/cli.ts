@@ -62,6 +62,7 @@ program
   .option('--core', 'Upload WordPress core files')
   .option('--database', 'Export and upload the database')
   .option('--dry-run', 'Show what would be uploaded without actually uploading')
+  .option('--no-backup', 'Skip creating a backup before uploading')
   .action(async (environment: string, options: UploadOptions) => {
     const config = await getConfigForEnv(environment);
     await runUpload(environment, options, config);

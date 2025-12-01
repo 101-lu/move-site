@@ -99,6 +99,7 @@ export interface UploadOptions {
   core?: boolean;
   database?: boolean;
   dryRun?: boolean;
+  backup?: boolean;  // Commander.js converts --no-backup to backup: false
 }
 
 /**
