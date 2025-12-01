@@ -22,7 +22,7 @@
     "website",
     "migration"
   ],
-  "author": "",
+  "author": "Andrey Lechev @ 101 Studios",
   "license": "MIT",
   "dependencies": {
     "chalk": "^5.3.0",

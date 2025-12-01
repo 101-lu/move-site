@@ -14,7 +14,7 @@ const packageJson = require(join(__dirname, '..', '..', 'package.json'));
 
 program
   .name('move-site')
-  .description('CLI tool for moving website files and databases between environments')
+  .description('CLI tool for moving website files and databases between environments\n© 2025 101 Studios')
   .version(packageJson.version);
 
 // Config command
