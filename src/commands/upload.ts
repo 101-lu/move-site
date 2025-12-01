@@ -1,7 +1,14 @@
 import { getAdapter } from '../cms/index.js';
 import { SSHTransfer } from '../transfer/ssh.js';
 import { runBackup } from './backup.js';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import fs from 'fs/promises';
+import path from 'path';
+import os from 'os';
 import type { SiteConfig, UploadOptions, FileInfo, CMSAdapter, EnvironmentType } from '../types/index.js';
+
+const execAsync = promisify(exec);
 
 interface FileCategories {
   Themes: FileInfo[];
@@ -57,15 +64,16 @@ export async function runUpload(environment: string, options: UploadOptions, con
   if (options.dryRun) {
     console.log('\n🔍 Dry run - files that would be uploaded:');
     const categories = categorizeFiles(files);
+    const limit = options.verbose ? Infinity : 5;
 
     for (const [category, categoryFiles] of Object.entries(categories) as [string, FileInfo[]][]) {
       if (categoryFiles.length > 0) {
         console.log(`\n  ${category}: ${categoryFiles.length} files`);
-        categoryFiles.slice(0, 5).forEach((f: FileInfo) => {
+        categoryFiles.slice(0, limit).forEach((f: FileInfo) => {
           console.log(`    - ${f.relativePath}`);
         });
-        if (categoryFiles.length > 5) {
-          console.log(`    ... and ${categoryFiles.length - 5} more`);
+        if (categoryFiles.length > limit) {
+          console.log(`    ... and ${categoryFiles.length - limit} more`);
         }
       }
     }
@@ -107,35 +115,93 @@ export async function runUpload(environment: string, options: UploadOptions, con
     await transfer.connect();
     console.log('✅ Connected!\n');
 
-    // Upload files with progress
-    const result = await transfer.uploadFiles(files, envConfig.remotePath, (progress) => {
-      if (progress.type === 'start') {
-        process.stdout.write(
-          `\r⏳ Uploading (${progress.completed + 1}/${progress.total}): ${progress.file.slice(0, 50)}...`
-        );
+    // Create a temporary archive locally
+    const tempDir = os.tmpdir();
+    const archiveName = `move-site-upload-${Date.now()}.tar.gz`;
+    const localArchivePath = path.join(tempDir, archiveName);
+    const remoteArchivePath = `${envConfig.remotePath}/${archiveName}`;
+
+    console.log('📦 Creating local archive...');
+    
+    // Determine what folders to include based on options
+    let includePaths: string[] = [];
+    
+    if (options.all || (!options.uploads && !options.plugins && !options.themes && !options.core)) {
+      // All files - exclude common dev folders
+      includePaths = ['.'];
+    } else {
+      if (options.themes) includePaths.push('wp-content/themes');
+      if (options.plugins) includePaths.push('wp-content/plugins');
+      if (options.uploads) includePaths.push('wp-content/uploads');
+      if (options.core) {
+        includePaths.push('wp-admin', 'wp-includes');
+        // Add root PHP files
+        includePaths.push('*.php');
       }
-    });
-
-    // Clear the progress line
-    process.stdout.write('\r' + ' '.repeat(80) + '\r');
-
-    console.log(`\n✅ Upload complete!`);
-    console.log(`   ${result.completed}/${result.total} files uploaded successfully`);
-
-    if (result.errors.length > 0) {
-      console.log(`\n⚠️  ${result.errors.length} files failed to upload:`);
-      result.errors.forEach((err) => {
-        console.log(`   - ${err.file}: ${err.error}`);
-      });
     }
+
+    // Build tar command with exclusions
+    const excludes = [
+      '--exclude=node_modules',
+      '--exclude=vendor',
+      '--exclude=.git',
+      '--exclude=.svn',
+      '--exclude=.DS_Store',
+      '--exclude=Thumbs.db',
+      '--exclude=.idea',
+      '--exclude=.vscode',
+      '--exclude=backups',
+      '--exclude=.move-site-config.json',
+      '--exclude=*.log',
+      '--exclude=debug.log',
+      '--exclude=error_log',
+    ].join(' ');
+
+    const tarCmd = `cd "${adapter.basePath}" && tar -czf "${localArchivePath}" ${excludes} ${includePaths.join(' ')}`;
+    
+    try {
+      await execAsync(tarCmd);
+    } catch (error) {
+      const err = error as Error;
+      console.error(`❌ Failed to create archive: ${err.message}`);
+      process.exit(1);
+    }
+
+    // Get archive size
+    const archiveStat = await fs.stat(localArchivePath);
+    const sizeMB = (archiveStat.size / (1024 * 1024)).toFixed(2);
+    console.log(`   ✅ Archive created: ${sizeMB} MB`);
+
+    // Upload the archive
+    console.log('\n📤 Uploading archive...');
+    await transfer.uploadFile(localArchivePath, remoteArchivePath);
+    console.log('   ✅ Archive uploaded');
+
+    // Extract on server
+    console.log('\n📂 Extracting on server...');
+    const extractCmd = `cd "${envConfig.remotePath}" && tar -xzf "${archiveName}" && rm "${archiveName}"`;
+    const extractResult = await transfer.exec(extractCmd);
+    
+    if (extractResult.code !== 0) {
+      console.error(`❌ Failed to extract: ${extractResult.stderr}`);
+      // Clean up remote archive if extraction failed
+      await transfer.exec(`rm -f "${remoteArchivePath}"`);
+    } else {
+      console.log('   ✅ Files extracted');
+    }
+
+    // Clean up local archive
+    await fs.unlink(localArchivePath);
+
+    console.log(`\n✅ Upload complete! (${files.length} files)`);
 
     // If files owner is configured, check and update ownership if needed
     const filesOwner = envConfig.ssh?.filesOwner;
     const filesGroup = envConfig.ssh?.filesGroup || filesOwner;
     if (filesOwner) {
-      // Check if any files have incorrect ownership
+      // Check if any files have incorrect ownership (skip root folder with mindepth 1)
       const checkOwnerResult = await transfer.exec(
-        `find "${envConfig.remotePath}" ! -user ${filesOwner} 2>/dev/null | head -1`
+        `find "${envConfig.remotePath}" -mindepth 1 ! -user ${filesOwner} 2>/dev/null | head -1`
       );
       const hasWrongOwner = checkOwnerResult.stdout.trim().length > 0;
 
@@ -143,8 +209,9 @@ export async function runUpload(environment: string, options: UploadOptions, con
         console.log(`\n✅ File ownership already correct: ${filesOwner}:${filesGroup}`);
       } else {
         console.log(`\n🔧 Setting file ownership to '${filesOwner}:${filesGroup}'...`);
+        // Use find with -mindepth 1 to skip the root folder itself
         const chownResult = await transfer.exec(
-          `chown -R ${filesOwner}:${filesGroup} "${envConfig.remotePath}" 2>&1`
+          `find "${envConfig.remotePath}" -mindepth 1 -exec chown ${filesOwner}:${filesGroup} {} + 2>&1`
         );
         if (chownResult.code !== 0) {
           console.log(`   ⚠️  Could not change ownership (may require sudo): ${chownResult.stderr || chownResult.stdout}`);

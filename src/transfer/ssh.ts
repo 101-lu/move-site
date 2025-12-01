@@ -123,6 +123,8 @@ export class SSHTransfer {
     const remoteDir = path.dirname(remotePath);
     await this.ensureRemoteDir(remoteDir);
     await this.client.put(localPath, remotePath);
+    // Set file permissions to 644 (-rw-r--r--) to avoid 403 errors on web servers
+    await this.client.chmod(remotePath, 0o644);
   }
 
   /**

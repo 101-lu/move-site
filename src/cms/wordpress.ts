@@ -207,13 +207,34 @@ export class WordPressAdapter implements CMSAdapter {
    */
   shouldExclude(name: string): boolean {
     const excludePatterns = [
+      // Version control
       '.git',
       '.gitignore',
+      '.gitattributes',
+      '.svn',
+      // Dependencies
       'node_modules',
+      'vendor',
+      // Build/dev files
+      '.env',
+      '.env.local',
+      '.env.production',
+      // OS files
       '.DS_Store',
-      '.move-site-config.json',
       'Thumbs.db',
+      'desktop.ini',
+      // IDE/Editor
+      '.idea',
+      '.vscode',
+      '*.swp',
+      '*.swo',
+      // App specific
+      '.move-site-config.json',
       'backups',
+      // Logs
+      '*.log',
+      'debug.log',
+      'error_log',
     ];
 
     return excludePatterns.some((pattern) => {

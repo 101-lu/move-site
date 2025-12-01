@@ -62,6 +62,7 @@ program
   .option('--core', 'Upload WordPress core files')
   .option('--database', 'Export and upload the database')
   .option('--dry-run', 'Show what would be uploaded without actually uploading')
+  .option('--verbose', 'Show all files in dry-run mode (instead of first 5)')
   .option('--no-backup', 'Skip creating a backup before uploading')
   .action(async (environment: string, options: UploadOptions) => {
     const config = await getConfigForEnv(environment);
@@ -76,12 +77,13 @@ const backupCmd = program
 // backup create
 backupCmd
   .command('create <environment>')
-  .description('Create a backup of files on a remote environment')
+  .description('Create a backup of files or database on a remote environment')
   .option('--all', 'Backup all files (excluding backups folder)')
   .option('--uploads', 'Backup the uploads folder (wp-content/uploads)')
   .option('--plugins', 'Backup the plugins folder (wp-content/plugins)')
   .option('--themes', 'Backup the themes folder (wp-content/themes)')
   .option('--core', 'Backup WordPress core files')
+  .option('--database', 'Backup the database (mysqldump)')
   .option('--dry-run', 'Show what would be backed up without creating backups')
   .action(async (environment: string, options: UploadOptions) => {
     const config = await getConfigForEnv(environment);

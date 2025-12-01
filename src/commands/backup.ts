@@ -32,6 +32,11 @@ function generateBackupName(type: string): string {
 function getFoldersToBackup(options: UploadOptions): { name: string; path: string }[] {
   const folders: { name: string; path: string }[] = [];
 
+  // If only database is requested, return empty (handled separately)
+  if (options.database && !options.all && !options.themes && !options.plugins && !options.uploads && !options.core) {
+    return [];
+  }
+
   if (options.all) {
     return [{ name: 'all', path: '.' }];
   }
@@ -49,8 +54,8 @@ function getFoldersToBackup(options: UploadOptions): { name: string; path: strin
     folders.push({ name: 'core', path: WP_FOLDERS.core });
   }
 
-  // If no specific options, backup everything
-  if (folders.length === 0) {
+  // If no specific options (and not database-only), backup everything
+  if (folders.length === 0 && !options.database) {
     return [{ name: 'all', path: '.' }];
   }
 
@@ -81,6 +86,7 @@ export async function runBackup(environment: string, options: UploadOptions, con
   const foldersToBackup = getFoldersToBackup(options);
   const remotePath = envConfig.remotePath;
   const backupsDir = `${remotePath}/backups`;
+  const dbConfig = envConfig.database;
 
   // Show what will be backed up
   if (options.dryRun) {
@@ -88,6 +94,10 @@ export async function runBackup(environment: string, options: UploadOptions, con
     for (const folder of foldersToBackup) {
       const backupName = generateBackupName(folder.name);
       console.log(`   📁 ${folder.path} → backups/${backupName}`);
+    }
+    if (options.database) {
+      const dbBackupName = generateBackupName('database');
+      console.log(`   🗄️  database → backups/${dbBackupName}`);
     }
     return;
   }
@@ -140,6 +150,55 @@ export async function runBackup(environment: string, options: UploadOptions, con
         const sizeResult = await transfer.exec(`du -h "${backupPath}" | cut -f1`);
         const size = sizeResult.stdout.trim() || 'unknown size';
         console.log(`   ✅ Created: backups/${backupName} (${size})`);
+      }
+    }
+
+    // Create database backup if requested
+    if (options.database) {
+      console.log(`\n⏳ Backing up database...`);
+      
+      if (!dbConfig) {
+        console.log(`   ⚠️  Skipping database - no database configuration found`);
+      } else {
+        const dbBackupName = generateBackupName('database');
+        const sqlFile = `${backupsDir}/database.sql`;
+        const backupPath = `${backupsDir}/${dbBackupName}`;
+        
+        // Build mysqldump command with table prefix if configured
+        const tablePrefix = dbConfig.tablePrefix || '';
+        let mysqldumpCmd = `mysqldump -h "${dbConfig.host}" -u "${dbConfig.user}" -p"${dbConfig.password}" "${dbConfig.name}"`;
+        
+        // If table prefix is set, only backup tables with that prefix
+        if (tablePrefix) {
+          // Get list of tables with the prefix
+          const getTablesCmd = `mysql -h "${dbConfig.host}" -u "${dbConfig.user}" -p"${dbConfig.password}" -N -e "SHOW TABLES LIKE '${tablePrefix}%'" "${dbConfig.name}"`;
+          const tablesResult = await transfer.exec(getTablesCmd);
+          
+          if (tablesResult.code !== 0) {
+            console.error(`   ❌ Failed to get tables: ${tablesResult.stderr}`);
+          } else {
+            const tables = tablesResult.stdout.trim().split('\n').filter(t => t);
+            if (tables.length === 0) {
+              console.log(`   ⚠️  No tables found with prefix '${tablePrefix}'`);
+            } else {
+              console.log(`   📋 Found ${tables.length} tables with prefix '${tablePrefix}'`);
+              mysqldumpCmd = `mysqldump -h "${dbConfig.host}" -u "${dbConfig.user}" -p"${dbConfig.password}" "${dbConfig.name}" ${tables.join(' ')}`;
+            }
+          }
+        }
+        
+        // Run mysqldump and create archive
+        const dumpCmd = `${mysqldumpCmd} > "${sqlFile}" && tar -czf "${backupPath}" -C "${backupsDir}" database.sql && rm "${sqlFile}"`;
+        const result = await transfer.exec(dumpCmd);
+        
+        if (result.code !== 0) {
+          console.error(`   ❌ Failed to backup database: ${result.stderr}`);
+        } else {
+          // Get backup file size
+          const sizeResult = await transfer.exec(`du -h "${backupPath}" | cut -f1`);
+          const size = sizeResult.stdout.trim() || 'unknown size';
+          console.log(`   ✅ Created: backups/${dbBackupName} (${size})`);
+        }
       }
     }
 
@@ -462,11 +521,18 @@ export async function restoreBackup(
           onSelect: async (selected: BackupFile[]) => {
             unmount();
             const backup = selected[0];
+            const isDatabase = backup.name.includes('-database.');
 
             if (dryRun) {
               console.log(`\n🔍 Dry run - would restore from: ${backup.name}`);
               console.log(`   Archive: ${backup.fullPath}`);
-              console.log(`   Target: ${envConfig.remotePath}`);
+              if (isDatabase) {
+                console.log(`   Type: Database backup`);
+                console.log(`   Target: ${envConfig.database?.name || 'configured database'}`);
+              } else {
+                console.log(`   Type: Files backup`);
+                console.log(`   Target: ${envConfig.remotePath}`);
+              }
               
               // Show contents of the archive
               console.log('\n   Contents:');
@@ -484,9 +550,15 @@ export async function restoreBackup(
               return;
             }
 
-            console.log(`\n⚠️  This will overwrite existing files!`);
-            console.log(`   Backup: ${backup.name} (${backup.size})`);
-            console.log(`   Target: ${envConfig.remotePath}`);
+            if (isDatabase) {
+              console.log(`\n⚠️  This will replace tables in the database!`);
+              console.log(`   Backup: ${backup.name} (${backup.size})`);
+              console.log(`   Database: ${envConfig.database?.name || 'configured database'}`);
+            } else {
+              console.log(`\n⚠️  This will overwrite existing files!`);
+              console.log(`   Backup: ${backup.name} (${backup.size})`);
+              console.log(`   Target: ${envConfig.remotePath}`);
+            }
             console.log('');
 
             // Confirmation
@@ -509,38 +581,71 @@ export async function restoreBackup(
 
             console.log('\n🔄 Restoring backup...');
 
-            // Extract the backup
-            // Use -C to change to the target directory
-            // The backup was created from the remotePath, so we extract there
-            const extractCmd = `cd "${envConfig.remotePath}" && tar -xzf "${backup.fullPath}"`;
-            const result = await transfer.exec(extractCmd);
+            if (isDatabase) {
+              // Database restore
+              const dbConfig = envConfig.database;
+              if (!dbConfig) {
+                console.error(`\n❌ No database configuration found for this environment`);
+                resolve();
+                return;
+              }
 
-            if (result.code !== 0) {
-              console.error(`\n❌ Restore failed: ${result.stderr}`);
+              // Extract SQL file and import to database
+              const tempDir = `${envConfig.remotePath}/backups/.temp`;
+              const extractCmd = `mkdir -p "${tempDir}" && tar -xzf "${backup.fullPath}" -C "${tempDir}"`;
+              const extractResult = await transfer.exec(extractCmd);
+
+              if (extractResult.code !== 0) {
+                console.error(`\n❌ Failed to extract backup: ${extractResult.stderr}`);
+                resolve();
+                return;
+              }
+
+              // Import the SQL file
+              const importCmd = `mysql -h "${dbConfig.host}" -u "${dbConfig.user}" -p"${dbConfig.password}" "${dbConfig.name}" < "${tempDir}/database.sql"`;
+              const importResult = await transfer.exec(importCmd);
+
+              // Clean up temp directory
+              await transfer.exec(`rm -rf "${tempDir}"`);
+
+              if (importResult.code !== 0) {
+                console.error(`\n❌ Database restore failed: ${importResult.stderr}`);
+              } else {
+                console.log(`\n✅ Database restored successfully from: ${backup.name}`);
+              }
             } else {
-              console.log(`\n✅ Restored successfully from: ${backup.name}`);
-              
-              // If files owner is configured, check and update ownership if needed
-              const filesOwner = envConfig.ssh?.filesOwner;
-              const filesGroup = envConfig.ssh?.filesGroup || filesOwner;
-              if (filesOwner) {
-                // Check if any files have incorrect ownership
-                const checkOwnerResult = await transfer.exec(
-                  `find "${envConfig.remotePath}" ! -user ${filesOwner} 2>/dev/null | head -1`
-                );
-                const hasWrongOwner = checkOwnerResult.stdout.trim().length > 0;
+              // Files restore
+              const extractCmd = `cd "${envConfig.remotePath}" && tar -xzf "${backup.fullPath}"`;
+              const result = await transfer.exec(extractCmd);
+
+              if (result.code !== 0) {
+                console.error(`\n❌ Restore failed: ${result.stderr}`);
+              } else {
+                console.log(`\n✅ Restored successfully from: ${backup.name}`);
                 
-                if (!hasWrongOwner) {
-                  console.log(`\n✅ File ownership already correct: ${filesOwner}:${filesGroup}`);
-                } else {
-                  console.log(`\n🔧 Setting file ownership to '${filesOwner}:${filesGroup}'...`);
-                  const chownResult = await transfer.exec(
-                    `chown -R ${filesOwner}:${filesGroup} "${envConfig.remotePath}" 2>&1`
+                // If files owner is configured, check and update ownership if needed
+                const filesOwner = envConfig.ssh?.filesOwner;
+                const filesGroup = envConfig.ssh?.filesGroup || filesOwner;
+                if (filesOwner) {
+                  // Check if any files have incorrect ownership (skip root folder with mindepth 1)
+                  const checkOwnerResult = await transfer.exec(
+                    `find "${envConfig.remotePath}" -mindepth 1 ! -user ${filesOwner} 2>/dev/null | head -1`
                   );
-                  if (chownResult.code !== 0) {
-                    console.log(`   ⚠️  Could not change ownership (may require sudo): ${chownResult.stderr || chownResult.stdout}`);
+                  const hasWrongOwner = checkOwnerResult.stdout.trim().length > 0;
+                  
+                  if (!hasWrongOwner) {
+                    console.log(`\n✅ File ownership already correct: ${filesOwner}:${filesGroup}`);
                   } else {
-                    console.log('   ✅ Ownership updated');
+                    console.log(`\n🔧 Setting file ownership to '${filesOwner}:${filesGroup}'...`);
+                    // Use find with -mindepth 1 to skip the root folder itself
+                    const chownResult = await transfer.exec(
+                      `find "${envConfig.remotePath}" -mindepth 1 -exec chown ${filesOwner}:${filesGroup} {} + 2>&1`
+                    );
+                    if (chownResult.code !== 0) {
+                      console.log(`   ⚠️  Could not change ownership (may require sudo): ${chownResult.stderr || chownResult.stdout}`);
+                    } else {
+                      console.log('   ✅ Ownership updated');
+                    }
                   }
                 }
               }
