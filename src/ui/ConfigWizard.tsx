@@ -24,12 +24,14 @@ const STEPS: Record<string, WizardStep> = {
   SSH_AUTH_TYPE: 'ssh_auth_type',
   SSH_PASSWORD: 'ssh_password',
   SSH_KEY_PATH: 'ssh_key_path',
+  SSH_FILES_OWNER: 'ssh_files_owner',
   REMOTE_PATH: 'remote_path',
   LOCAL_PATH: 'local_path',
   DB_HOST: 'db_host',
   DB_NAME: 'db_name',
   DB_USER: 'db_user',
   DB_PASSWORD: 'db_password',
+  DB_TABLE_PREFIX: 'db_table_prefix',
   ADD_ANOTHER: 'add_another',
   CONFIRM: 'confirm',
 };
@@ -66,6 +68,7 @@ const createInitialEnvState = (): WizardEnvironmentState => ({
     authType: 'key',
     password: '',
     keyPath: '~/.ssh/id_rsa',
+    filesOwner: '',
   },
   remotePath: '',
   database: {
@@ -73,6 +76,7 @@ const createInitialEnvState = (): WizardEnvironmentState => ({
     name: '',
     user: '',
     password: '',
+    tablePrefix: 'wp_',
   },
 });
 
@@ -89,6 +93,7 @@ const envConfigToState = (type: EnvironmentType, env: EnvironmentConfig): Wizard
     authType: env.ssh?.password ? 'password' : 'key',
     password: env.ssh?.password || '',
     keyPath: env.ssh?.keyPath || '~/.ssh/id_rsa',
+    filesOwner: env.ssh?.filesOwner || '',
   },
   remotePath: env.remotePath || '',
   database: {
@@ -96,6 +101,7 @@ const envConfigToState = (type: EnvironmentType, env: EnvironmentConfig): Wizard
     name: env.database?.name || '',
     user: env.database?.user || '',
     password: env.database?.password || '',
+    tablePrefix: env.database?.tablePrefix || 'wp_',
   },
 });
 
@@ -117,6 +123,28 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
   const [currentEnv, setCurrentEnv] = useState<WizardEnvironmentState>(createInitialEnvState());
   const [inputValue, setInputValue] = useState('');
   const [isEditing, setIsEditing] = useState(false); // Track if we're editing an existing env
+
+  // Helper to get existing table prefix from any configured environment
+  const getExistingTablePrefix = (): string => {
+    const envs = Object.values(config.environments);
+    for (const env of envs) {
+      if (env?.database?.tablePrefix) {
+        return env.database.tablePrefix;
+      }
+    }
+    return 'wp_'; // Default WordPress prefix
+  };
+
+  // Helper to get existing files owner from any configured environment
+  const getExistingFilesOwner = (): string => {
+    const envs = Object.values(config.environments);
+    for (const env of envs) {
+      if (env?.ssh?.filesOwner) {
+        return env.ssh.filesOwner;
+      }
+    }
+    return ''; // No default
+  };
 
   // Navigate to a new step, saving current to history
   const goToStep = (newStep: WizardStep) => {
@@ -159,6 +187,9 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
       case STEPS.SSH_KEY_PATH:
         setInputValue(currentEnv.ssh.keyPath);
         break;
+      case STEPS.SSH_FILES_OWNER:
+        setInputValue(currentEnv.ssh.filesOwner);
+        break;
       case STEPS.REMOTE_PATH:
         setInputValue(currentEnv.remotePath);
         break;
@@ -173,6 +204,9 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
         break;
       case STEPS.DB_PASSWORD:
         setInputValue(currentEnv.database.password);
+        break;
+      case STEPS.DB_TABLE_PREFIX:
+        setInputValue(currentEnv.database.tablePrefix);
         break;
       default:
         setInputValue('');
@@ -189,8 +223,9 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
         onCancel();
       }
     }
-    // Also support left arrow to go back
-    if (key.leftArrow && canGoBack) {
+    // Also support left arrow to go back, but only if input is empty
+    // This allows normal text editing when there's content in the input
+    if (key.leftArrow && canGoBack && inputValue === '') {
       goBack();
     }
   });
@@ -302,14 +337,25 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
           ...prev,
           ssh: { ...prev.ssh, password: value },
         }));
-        setInputValue(currentEnv.remotePath);
-        goToStep(STEPS.REMOTE_PATH);
+        // Get existing files owner or empty string
+        setInputValue(currentEnv.ssh.filesOwner || getExistingFilesOwner());
+        goToStep(STEPS.SSH_FILES_OWNER);
         break;
 
       case STEPS.SSH_KEY_PATH:
         setCurrentEnv((prev) => ({
           ...prev,
           ssh: { ...prev.ssh, keyPath: value || '~/.ssh/id_rsa' },
+        }));
+        // Get existing files owner or empty string
+        setInputValue(currentEnv.ssh.filesOwner || getExistingFilesOwner());
+        goToStep(STEPS.SSH_FILES_OWNER);
+        break;
+
+      case STEPS.SSH_FILES_OWNER:
+        setCurrentEnv((prev) => ({
+          ...prev,
+          ssh: { ...prev.ssh, filesOwner: value },
         }));
         setInputValue(currentEnv.remotePath);
         goToStep(STEPS.REMOTE_PATH);
@@ -355,36 +401,66 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
         break;
 
       case STEPS.DB_PASSWORD:
-        const finalEnv = {
-          ...currentEnv,
-          database: { ...currentEnv.database, password: value },
-        };
-        // Build environment config - SSH is optional for local environments
-        const envConfig: any = {
-          remotePath: finalEnv.remotePath,
-          database: finalEnv.database,
-        };
-        // Only add SSH config for non-local environments
-        if (finalEnv.type !== 'local') {
-          envConfig.ssh = {
-            host: finalEnv.ssh.host,
-            port: parseInt(finalEnv.ssh.port, 10),
-            user: finalEnv.ssh.user,
-            ...(finalEnv.ssh.authType === 'password'
-              ? { password: finalEnv.ssh.password }
-              : { keyPath: finalEnv.ssh.keyPath }),
-          };
-        }
-        setConfig((prev) => ({
+        setCurrentEnv((prev) => ({
           ...prev,
-          environments: {
-            ...prev.environments,
-            [currentEnv.type]: envConfig,
-          },
+          database: { ...prev.database, password: value },
         }));
+        // For WordPress, ask for table prefix
+        if (config.cms === 'wordpress') {
+          // Use existing value, or get from other envs, or default to 'wp_'
+          const prefix = currentEnv.database.tablePrefix || getExistingTablePrefix();
+          setInputValue(prefix);
+          goToStep(STEPS.DB_TABLE_PREFIX);
+        } else {
+          // For non-WordPress, skip table prefix and save
+          saveEnvironment(currentEnv);
+          goToStep(STEPS.ADD_ANOTHER);
+        }
+        break;
+
+      case STEPS.DB_TABLE_PREFIX:
+        const finalEnvWithPrefix = {
+          ...currentEnv,
+          database: { ...currentEnv.database, tablePrefix: value || 'wp_' },
+        };
+        saveEnvironment(finalEnvWithPrefix);
         goToStep(STEPS.ADD_ANOTHER);
         break;
     }
+  };
+
+  // Helper function to save the current environment to config
+  const saveEnvironment = (envState: WizardEnvironmentState) => {
+    // Build environment config - SSH is optional for local environments
+    const envConfig: any = {
+      remotePath: envState.remotePath,
+      database: {
+        host: envState.database.host,
+        name: envState.database.name,
+        user: envState.database.user,
+        password: envState.database.password,
+        ...(envState.database.tablePrefix ? { tablePrefix: envState.database.tablePrefix } : {}),
+      },
+    };
+    // Only add SSH config for non-local environments
+    if (envState.type !== 'local') {
+      envConfig.ssh = {
+        host: envState.ssh.host,
+        port: parseInt(envState.ssh.port, 10),
+        user: envState.ssh.user,
+        ...(envState.ssh.authType === 'password'
+          ? { password: envState.ssh.password }
+          : { keyPath: envState.ssh.keyPath }),
+        ...(envState.ssh.filesOwner ? { filesOwner: envState.ssh.filesOwner } : {}),
+      };
+    }
+    setConfig((prev) => ({
+      ...prev,
+      environments: {
+        ...prev.environments,
+        [envState.type]: envConfig,
+      },
+    }));
   };
 
   const renderTextInput = (label: string, placeholder: string = '') => (
@@ -478,6 +554,14 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
       case STEPS.SSH_KEY_PATH:
         return renderTextInput('Path to SSH key:', '~/.ssh/id_rsa');
 
+      case STEPS.SSH_FILES_OWNER:
+        return (
+          <Box flexDirection="column">
+            {renderTextInput('Files owner username (leave empty to keep SSH user):', currentEnv.ssh.user)}
+            <Text dimColor>Used to chown uploaded files to a different user (e.g., www-data for PHP)</Text>
+          </Box>
+        );
+
       case STEPS.REMOTE_PATH:
         return renderTextInput('Remote path to website (e.g., /var/www/html):');
 
@@ -495,6 +579,14 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
 
       case STEPS.DB_PASSWORD:
         return renderPasswordInput('Database password:');
+
+      case STEPS.DB_TABLE_PREFIX:
+        return (
+          <Box flexDirection="column">
+            {renderTextInput('WordPress table prefix:', 'wp_')}
+            <Text dimColor>The prefix used for database tables (found in wp-config.php as $table_prefix)</Text>
+          </Box>
+        );
 
       case STEPS.ADD_ANOTHER:
         return (

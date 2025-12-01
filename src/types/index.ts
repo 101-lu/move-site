@@ -18,6 +18,8 @@ export interface SSHConfig {
   user: string;
   password?: string;
   keyPath?: string;
+  /** Owner username for uploaded files (for chown). If not set, files keep the SSH user ownership */
+  filesOwner?: string;
 }
 
 /**
@@ -29,6 +31,8 @@ export interface DatabaseConfig {
   name: string;
   user: string;
   password: string;
+  /** Table prefix for CMS (e.g., 'wp_' for WordPress) */
+  tablePrefix?: string;
 }
 
 /**
@@ -251,6 +255,7 @@ export interface WizardEnvironmentState {
     authType: 'key' | 'password';
     password: string;
     keyPath: string;
+    filesOwner: string;
   };
   remotePath: string;
   database: {
@@ -258,6 +263,7 @@ export interface WizardEnvironmentState {
     name: string;
     user: string;
     password: string;
+    tablePrefix: string;
   };
 }
 
@@ -274,11 +280,13 @@ export type WizardStep =
   | 'ssh_auth_type'
   | 'ssh_password'
   | 'ssh_key_path'
+  | 'ssh_files_owner'
   | 'remote_path'
   | 'local_path'
   | 'db_host'
   | 'db_name'
   | 'db_user'
   | 'db_password'
+  | 'db_table_prefix'
   | 'add_another'
   | 'confirm';
