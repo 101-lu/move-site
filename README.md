@@ -14,7 +14,7 @@ CLI tool for moving website files and databases between environments (local, sta
 ## Installation
 
 ```bash
-npm install -g site-move
+npm install -g move-site
 ```
 
 Or for development:
@@ -34,7 +34,7 @@ npm link
 Run the configuration wizard:
 
 ```bash
-site-move config
+move-site config
 ```
 
 This will create a `.move-site-config.json` file in your project directory.
@@ -45,14 +45,14 @@ Upload to a configured environment:
 
 ```bash
 # Upload all files
-site-move upload production
+move-site upload production
 
 # Upload specific folders
-site-move upload staging --themes
-site-move upload test --plugins --uploads
+move-site upload staging --themes
+move-site upload test --plugins --uploads
 
 # Dry run to see what would be uploaded
-site-move upload production --themes --dry-run
+move-site upload production --themes --dry-run
 ```
 
 ### Available Options
@@ -70,10 +70,10 @@ site-move upload production --themes --dry-run
 ### Commands
 
 ```bash
-site-move --help       # Show help
-site-move --version    # Show version
-site-move config       # Run configuration wizard
-site-move upload <env> # Upload to environment
+move-site --help       # Show help
+move-site --version    # Show version
+move-site config       # Run configuration wizard
+move-site upload <env> # Upload to environment
 ```
 
 ## Configuration

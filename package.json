@@ -1,10 +1,10 @@
 {
-  "name": "site-move",
+  "name": "move-site",
   "version": "0.1.0",
   "description": "CLI utility that help to move sites between hosts",
   "type": "module",
   "bin": {
-    "site-move": "./dist/bin/cli.js"
+    "move-site": "./dist/bin/cli.js"
   },
   "main": "dist/index.js",
   "scripts": {

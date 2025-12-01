@@ -13,7 +13,7 @@ const require = createRequire(import.meta.url);
 const packageJson = require(join(__dirname, '..', '..', 'package.json'));
 
 program
-  .name('site-move')
+  .name('move-site')
   .description('CLI tool for moving website files and databases between environments')
   .version(packageJson.version);
 
@@ -46,7 +46,7 @@ program
 
     const config = await loadConfig();
     if (!config) {
-      console.error('Failed to load configuration. Please run: site-move config');
+      console.error('Failed to load configuration. Please run: move-site config');
       process.exit(1);
     }
 
