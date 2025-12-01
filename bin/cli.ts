@@ -6,12 +6,36 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { runConfigWizard, loadConfig, configExists } from '../src/config/index.js';
 import { runUpload } from '../src/commands/upload.js';
-import { runBackup, listBackups } from '../src/commands/backup.js';
+import { runBackup, listBackups, deleteBackups, downloadBackups } from '../src/commands/backup.js';
 import type { UploadOptions, EnvironmentType } from '../src/types/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const packageJson = require(join(__dirname, '..', '..', 'package.json'));
+
+/**
+ * Helper to load and validate config for an environment
+ */
+async function getConfigForEnv(environment: string) {
+  if (!(await configExists())) {
+    console.log('No configuration found. Running setup wizard...\n');
+    await runConfigWizard();
+  }
+
+  const config = await loadConfig();
+  if (!config) {
+    console.error('Failed to load configuration. Please run: move-site config');
+    process.exit(1);
+  }
+
+  if (!config.environments[environment as EnvironmentType]) {
+    console.error(`Environment "${environment}" not found in configuration.`);
+    console.error(`Available environments: ${Object.keys(config.environments).join(', ')}`);
+    process.exit(1);
+  }
+
+  return config;
+}
 
 program
   .name('move-site')
@@ -39,62 +63,58 @@ program
   .option('--database', 'Export and upload the database')
   .option('--dry-run', 'Show what would be uploaded without actually uploading')
   .action(async (environment: string, options: UploadOptions) => {
-    // Check if config exists
-    if (!(await configExists())) {
-      console.log('No configuration found. Running setup wizard...\n');
-      await runConfigWizard();
-    }
-
-    const config = await loadConfig();
-    if (!config) {
-      console.error('Failed to load configuration. Please run: move-site config');
-      process.exit(1);
-    }
-
-    if (!config.environments[environment as EnvironmentType]) {
-      console.error(`Environment "${environment}" not found in configuration.`);
-      console.error(`Available environments: ${Object.keys(config.environments).join(', ')}`);
-      process.exit(1);
-    }
-
+    const config = await getConfigForEnv(environment);
     await runUpload(environment, options, config);
   });
 
-// Backup command
-program
-  .command('backup <environment>')
-  .description('Create a backup of files on a remote environment before uploading')
+// Backup command group
+const backupCmd = program
+  .command('backup')
+  .description('Manage backups on remote environments');
+
+// backup create
+backupCmd
+  .command('create <environment>')
+  .description('Create a backup of files on a remote environment')
   .option('--all', 'Backup all files (excluding backups folder)')
   .option('--uploads', 'Backup the uploads folder (wp-content/uploads)')
   .option('--plugins', 'Backup the plugins folder (wp-content/plugins)')
   .option('--themes', 'Backup the themes folder (wp-content/themes)')
   .option('--core', 'Backup WordPress core files')
   .option('--dry-run', 'Show what would be backed up without creating backups')
-  .option('--list', 'List existing backups on the environment')
-  .action(async (environment: string, options: UploadOptions & { list?: boolean }) => {
-    // Check if config exists
-    if (!(await configExists())) {
-      console.log('No configuration found. Running setup wizard...\n');
-      await runConfigWizard();
-    }
+  .action(async (environment: string, options: UploadOptions) => {
+    const config = await getConfigForEnv(environment);
+    await runBackup(environment, options, config);
+  });
 
-    const config = await loadConfig();
-    if (!config) {
-      console.error('Failed to load configuration. Please run: move-site config');
-      process.exit(1);
-    }
+// backup list
+backupCmd
+  .command('list <environment>')
+  .description('List existing backups on a remote environment')
+  .action(async (environment: string) => {
+    const config = await getConfigForEnv(environment);
+    await listBackups(environment, config);
+  });
 
-    if (!config.environments[environment as EnvironmentType]) {
-      console.error(`Environment "${environment}" not found in configuration.`);
-      console.error(`Available environments: ${Object.keys(config.environments).join(', ')}`);
-      process.exit(1);
-    }
+// backup delete
+backupCmd
+  .command('delete <environment>')
+  .description('Interactively select and delete backups from a remote environment')
+  .option('--all', 'Delete all backups (with confirmation)')
+  .action(async (environment: string, options: { all?: boolean }) => {
+    const config = await getConfigForEnv(environment);
+    await deleteBackups(environment, config, options.all);
+  });
 
-    if (options.list) {
-      await listBackups(environment, config);
-    } else {
-      await runBackup(environment, options, config);
-    }
+// backup download
+backupCmd
+  .command('download <environment>')
+  .description('Download backups from a remote environment to local machine')
+  .option('--all', 'Download all backups')
+  .option('-o, --output <path>', 'Local directory to save backups', './backups')
+  .action(async (environment: string, options: { all?: boolean; output: string }) => {
+    const config = await getConfigForEnv(environment);
+    await downloadBackups(environment, config, options.all, options.output);
   });
 
 // Download command (placeholder for future)

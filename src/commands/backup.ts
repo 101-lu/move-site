@@ -1,4 +1,9 @@
+import React from 'react';
+import { render } from 'ink';
+import fs from 'fs/promises';
+import path from 'path';
 import { SSHTransfer } from '../transfer/ssh.js';
+import { BackupSelector, BackupFile } from '../ui/BackupSelector.js';
 import type { SiteConfig, UploadOptions, EnvironmentType } from '../types/index.js';
 
 /**
@@ -189,6 +194,226 @@ export async function listBackups(environment: string, config: SiteConfig): Prom
   } catch (error) {
     const err = error as Error;
     console.error(`\n❌ Failed to list backups: ${err.message}`);
+    process.exit(1);
+  } finally {
+    await transfer.disconnect();
+  }
+}
+
+/**
+ * Helper to get list of backups from remote
+ */
+async function getBackupsList(transfer: SSHTransfer, backupsDir: string): Promise<BackupFile[]> {
+  const result = await transfer.exec(
+    `ls -lh "${backupsDir}" 2>/dev/null | grep -E '\\.tar\\.gz$' | awk '{print $9, $5}'`
+  );
+
+  if (result.code !== 0 || !result.stdout.trim()) {
+    return [];
+  }
+
+  const lines = result.stdout.trim().split('\n');
+  return lines.map((line) => {
+    const parts = line.split(' ');
+    const name = parts[0];
+    const size = parts[1] || 'unknown';
+    return {
+      name,
+      size,
+      fullPath: `${backupsDir}/${name}`,
+    };
+  });
+}
+
+/**
+ * Interactive backup deletion
+ */
+export async function deleteBackups(
+  environment: string,
+  config: SiteConfig,
+  deleteAll: boolean = false
+): Promise<void> {
+  const envConfig = config.environments[environment as EnvironmentType];
+
+  if (!envConfig?.ssh) {
+    console.error('❌ Delete backups is only available for remote environments.');
+    process.exit(1);
+  }
+
+  console.log(`\n🗑️  Delete backups on ${environment}...\n`);
+  console.log(`🔌 Connecting to ${envConfig.ssh.host}...`);
+
+  const transfer = new SSHTransfer(envConfig);
+
+  try {
+    await transfer.connect();
+    console.log('✅ Connected!\n');
+
+    const backupsDir = `${envConfig.remotePath}/backups`;
+    const backups = await getBackupsList(transfer, backupsDir);
+
+    if (backups.length === 0) {
+      console.log('   No backups found.');
+      return;
+    }
+
+    if (deleteAll) {
+      // Delete all with confirmation
+      console.log(`⚠️  This will delete ALL ${backups.length} backup(s):`);
+      for (const backup of backups) {
+        console.log(`   📦 ${backup.name} (${backup.size})`);
+      }
+      console.log('');
+
+      // Simple confirmation using readline
+      const readline = await import('readline');
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
+
+      const answer = await new Promise<string>((resolve) => {
+        rl.question('Are you sure you want to delete ALL backups? (yes/no): ', resolve);
+      });
+      rl.close();
+
+      if (answer.toLowerCase() !== 'yes') {
+        console.log('\n❌ Cancelled.');
+        return;
+      }
+
+      // Delete all
+      console.log('\n🗑️  Deleting all backups...');
+      for (const backup of backups) {
+        const result = await transfer.exec(`rm -f "${backup.fullPath}"`);
+        if (result.code === 0) {
+          console.log(`   ✅ Deleted: ${backup.name}`);
+        } else {
+          console.log(`   ❌ Failed to delete: ${backup.name}`);
+        }
+      }
+      console.log('\n✅ Done!');
+    } else {
+      // Interactive selection
+      await new Promise<void>((resolve) => {
+        const { unmount } = render(
+          React.createElement(BackupSelector, {
+            backups,
+            action: 'delete',
+            onSelect: async (selected: BackupFile[]) => {
+              unmount();
+              console.log(`\n🗑️  Deleting ${selected.length} backup(s)...`);
+
+              for (const backup of selected) {
+                const result = await transfer.exec(`rm -f "${backup.fullPath}"`);
+                if (result.code === 0) {
+                  console.log(`   ✅ Deleted: ${backup.name}`);
+                } else {
+                  console.log(`   ❌ Failed to delete: ${backup.name}`);
+                }
+              }
+              console.log('\n✅ Done!');
+              resolve();
+            },
+            onCancel: () => {
+              unmount();
+              console.log('\n❌ Cancelled.');
+              resolve();
+            },
+          })
+        );
+      });
+    }
+  } catch (error) {
+    const err = error as Error;
+    console.error(`\n❌ Delete failed: ${err.message}`);
+    process.exit(1);
+  } finally {
+    await transfer.disconnect();
+  }
+}
+
+/**
+ * Download backups to local machine
+ */
+export async function downloadBackups(
+  environment: string,
+  config: SiteConfig,
+  downloadAll: boolean = false,
+  outputDir: string = './backups'
+): Promise<void> {
+  const envConfig = config.environments[environment as EnvironmentType];
+
+  if (!envConfig?.ssh) {
+    console.error('❌ Download backups is only available for remote environments.');
+    process.exit(1);
+  }
+
+  console.log(`\n📥 Download backups from ${environment}...\n`);
+  console.log(`🔌 Connecting to ${envConfig.ssh.host}...`);
+
+  const transfer = new SSHTransfer(envConfig);
+
+  try {
+    await transfer.connect();
+    console.log('✅ Connected!\n');
+
+    const backupsDir = `${envConfig.remotePath}/backups`;
+    const backups = await getBackupsList(transfer, backupsDir);
+
+    if (backups.length === 0) {
+      console.log('   No backups found.');
+      return;
+    }
+
+    // Ensure local output directory exists
+    const absoluteOutputDir = path.resolve(outputDir);
+    await fs.mkdir(absoluteOutputDir, { recursive: true });
+
+    const downloadBackupFiles = async (selected: BackupFile[]) => {
+      console.log(`\n📥 Downloading ${selected.length} backup(s) to ${absoluteOutputDir}...`);
+
+      for (const backup of selected) {
+        const localPath = path.join(absoluteOutputDir, backup.name);
+        console.log(`\n   ⏳ Downloading: ${backup.name} (${backup.size})...`);
+
+        try {
+          await transfer.downloadFile(backup.fullPath, localPath);
+          console.log(`   ✅ Downloaded: ${backup.name}`);
+        } catch (err) {
+          const error = err as Error;
+          console.log(`   ❌ Failed: ${backup.name} - ${error.message}`);
+        }
+      }
+      console.log('\n✅ Done!');
+    };
+
+    if (downloadAll) {
+      await downloadBackupFiles(backups);
+    } else {
+      // Interactive selection
+      await new Promise<void>((resolve) => {
+        const { unmount } = render(
+          React.createElement(BackupSelector, {
+            backups,
+            action: 'download',
+            onSelect: async (selected: BackupFile[]) => {
+              unmount();
+              await downloadBackupFiles(selected);
+              resolve();
+            },
+            onCancel: () => {
+              unmount();
+              console.log('\n❌ Cancelled.');
+              resolve();
+            },
+          })
+        );
+      });
+    }
+  } catch (error) {
+    const err = error as Error;
+    console.error(`\n❌ Download failed: ${err.message}`);
     process.exit(1);
   } finally {
     await transfer.disconnect();
