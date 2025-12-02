@@ -30,10 +30,12 @@ const STEPS: Record<string, WizardStep> = {
   REMOTE_PATH: 'remote_path',
   LOCAL_PATH: 'local_path',
   DB_HOST: 'db_host',
+  DB_SOCKET: 'db_socket',
   DB_NAME: 'db_name',
   DB_USER: 'db_user',
   DB_PASSWORD: 'db_password',
   DB_TABLE_PREFIX: 'db_table_prefix',
+  LOCAL_APP_SHELL_SCRIPT: 'local_app_shell_script',
   ADD_ANOTHER: 'add_another',
   CONFIRM: 'confirm',
 };
@@ -81,6 +83,10 @@ const createInitialEnvState = (): WizardEnvironmentState => ({
     user: '',
     password: '',
     tablePrefix: 'wp_',
+    socket: '',
+  },
+  localApp: {
+    shellScript: '',
   },
 });
 
@@ -108,6 +114,10 @@ const envConfigToState = (domain: string, env: EnvironmentConfig): WizardEnviron
     user: env.database?.user || '',
     password: env.database?.password || '',
     tablePrefix: env.database?.tablePrefix || 'wp_',
+    socket: env.database?.socket || '',
+  },
+  localApp: {
+    shellScript: env.localApp?.shellScript || '',
   },
 });
 
@@ -219,6 +229,9 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
       case STEPS.DB_HOST:
         setInputValue(currentEnv.database.host);
         break;
+      case STEPS.DB_SOCKET:
+        setInputValue(currentEnv.database.socket);
+        break;
       case STEPS.DB_NAME:
         setInputValue(currentEnv.database.name);
         break;
@@ -230,6 +243,9 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
         break;
       case STEPS.DB_TABLE_PREFIX:
         setInputValue(currentEnv.database.tablePrefix);
+        break;
+      case STEPS.LOCAL_APP_SHELL_SCRIPT:
+        setInputValue(currentEnv.localApp.shellScript);
         break;
       default:
         setInputValue('');
@@ -428,6 +444,21 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
           ...prev,
           database: { ...prev.database, host: value || 'localhost' },
         }));
+        // For local environments, ask for socket path (used by Local app)
+        if (currentEnv.type === 'local') {
+          setInputValue(currentEnv.database.socket || '');
+          goToStep(STEPS.DB_SOCKET);
+        } else {
+          setInputValue(currentEnv.database.name);
+          goToStep(STEPS.DB_NAME);
+        }
+        break;
+
+      case STEPS.DB_SOCKET:
+        setCurrentEnv((prev) => ({
+          ...prev,
+          database: { ...prev.database, socket: value },
+        }));
         setInputValue(currentEnv.database.name);
         goToStep(STEPS.DB_NAME);
         break;
@@ -469,11 +500,27 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
         break;
 
       case STEPS.DB_TABLE_PREFIX:
-        const finalEnvWithPrefix = {
+        const envWithPrefix = {
           ...currentEnv,
           database: { ...currentEnv.database, tablePrefix: value || 'wp_' },
         };
-        saveEnvironment(finalEnvWithPrefix);
+        // For local environments, ask for Local app shell script
+        if (currentEnv.type === 'local') {
+          setCurrentEnv(envWithPrefix);
+          setInputValue(currentEnv.localApp.shellScript || '');
+          goToStep(STEPS.LOCAL_APP_SHELL_SCRIPT);
+        } else {
+          saveEnvironment(envWithPrefix);
+          goToStep(STEPS.ADD_ANOTHER);
+        }
+        break;
+
+      case STEPS.LOCAL_APP_SHELL_SCRIPT:
+        const finalEnvWithLocalApp = {
+          ...currentEnv,
+          localApp: { ...currentEnv.localApp, shellScript: value },
+        };
+        saveEnvironment(finalEnvWithLocalApp);
         goToStep(STEPS.ADD_ANOTHER);
         break;
     }
@@ -492,6 +539,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
         user: envState.database.user,
         password: envState.database.password,
         ...(envState.database.tablePrefix ? { tablePrefix: envState.database.tablePrefix } : {}),
+        ...(envState.database.socket ? { socket: envState.database.socket } : {}),
       },
     };
     // Only add SSH config for non-local environments
@@ -505,6 +553,12 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
           : { keyPath: envState.ssh.keyPath }),
         ...(envState.ssh.filesOwner ? { filesOwner: envState.ssh.filesOwner } : {}),
         ...(envState.ssh.filesGroup ? { filesGroup: envState.ssh.filesGroup } : {}),
+      };
+    }
+    // Add localApp config if shellScript is set (for Local app environments)
+    if (envState.localApp?.shellScript) {
+      envConfig.localApp = {
+        shellScript: envState.localApp.shellScript,
       };
     }
     // Save by domain
@@ -629,6 +683,15 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
       case STEPS.DB_HOST:
         return renderTextInput('Database host:', 'localhost');
 
+      case STEPS.DB_SOCKET:
+        return (
+          <Box flexDirection="column">
+            {renderTextInput('MySQL socket path (optional):')}
+            <Text dimColor>For Local app: ~/Library/Application Support/Local/run/[SITE_ID]/mysql/mysqld.sock</Text>
+            <Text dimColor>Leave empty if not using Local app or connecting via TCP.</Text>
+          </Box>
+        );
+
       case STEPS.DB_NAME:
         return renderTextInput('Database name:');
 
@@ -643,6 +706,15 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
           <Box flexDirection="column">
             {renderTextInput('WordPress table prefix:', 'wp_')}
             <Text dimColor>The prefix used for database tables (found in wp-config.php as $table_prefix)</Text>
+          </Box>
+        );
+
+      case STEPS.LOCAL_APP_SHELL_SCRIPT:
+        return (
+          <Box flexDirection="column">
+            {renderTextInput('Local app shell script path (optional):')}
+            <Text dimColor>For Local app: ~/Library/Application Support/Local/ssh-entry/[SITE_ID].sh</Text>
+            <Text dimColor>This sets up the MySQL environment. Leave empty if not using Local app.</Text>
           </Box>
         );
 

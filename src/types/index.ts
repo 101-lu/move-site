@@ -291,6 +291,10 @@ export interface WizardEnvironmentState {
     user: string;
     password: string;
     tablePrefix: string;
+    socket: string;
+  };
+  localApp: {
+    shellScript: string;
   };
 }
 
@@ -313,9 +317,11 @@ export type WizardStep =
   | 'remote_path'
   | 'local_path'
   | 'db_host'
+  | 'db_socket'
   | 'db_name'
   | 'db_user'
   | 'db_password'
   | 'db_table_prefix'
+  | 'local_app_shell_script'
   | 'add_another'
   | 'confirm';
