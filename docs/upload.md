@@ -13,17 +13,17 @@ move-site upload <environment> [options]
 ### Examples
 
 ```bash
-# Upload themes to test environment
-move-site upload test --themes
+# Upload themes to staging environment
+move-site upload staging.example.com --themes
 
 # Upload plugins and uploads to production
-move-site upload production --plugins --uploads
+move-site upload example.com --plugins --uploads
 
 # Upload everything
-move-site upload test --all
+move-site upload staging.example.com --all
 
 # Preview what would be uploaded (dry run)
-move-site upload test --themes --dry-run
+move-site upload staging.example.com --themes --dry-run
 ```
 
 ---
@@ -54,7 +54,7 @@ By default, a backup is created on the remote server before uploading. This prov
 
 ```bash
 # Skip backup when you're confident
-move-site upload test --themes --no-backup
+move-site upload staging.example.com --themes --no-backup
 ```
 
 ### 3. Create Local Archive
@@ -92,12 +92,12 @@ The following files and folders are automatically excluded from uploads:
 Use `--dry-run` to preview what would be uploaded without making any changes:
 
 ```bash
-move-site upload test --plugins --dry-run
+move-site upload staging.example.com --plugins --dry-run
 ```
 
 Output:
 ```
-📤 Uploading to test...
+📤 Uploading to staging.example.com...
 📦 WordPress version: 6.4.2
 🔍 Scanning files...
 📁 Found 1247 files to upload
@@ -116,7 +116,7 @@ Output:
 Add `--verbose` to see all files:
 
 ```bash
-move-site upload test --plugins --dry-run --verbose
+move-site upload staging.example.com --plugins --dry-run --verbose
 ```
 
 ---
@@ -127,19 +127,19 @@ move-site upload test --plugins --dry-run --verbose
 
 ```bash
 # 1. Preview what will be uploaded
-move-site upload test --themes --dry-run
+move-site upload staging.example.com --themes --dry-run
 
 # 2. Upload with backup (default)
-move-site upload test --themes
+move-site upload staging.example.com --themes
 
 # 3. Or skip backup if you're confident
-move-site upload test --themes --no-backup
+move-site upload staging.example.com --themes --no-backup
 ```
 
 ### Output
 
 ```
-📤 Uploading to test...
+📤 Uploading to staging.example.com...
 
 📦 WordPress version: 6.4.2
 🔍 Scanning files...

@@ -46,25 +46,25 @@ move-site backup create <environment> [options]
 
 ```bash
 # Backup themes
-move-site backup create test --themes
+move-site backup create staging.example.com --themes
 
 # Backup database only
-move-site backup create production --database
+move-site backup create example.com --database
 
 # Backup themes and plugins together
-move-site backup create test --themes --plugins
+move-site backup create staging.example.com --themes --plugins
 
 # Backup everything (files only)
-move-site backup create test --all
+move-site backup create staging.example.com --all
 
 # Preview what would be backed up
-move-site backup create test --database --dry-run
+move-site backup create staging.example.com --database --dry-run
 ```
 
 ### Output
 
 ```
-📦 Creating backup on test...
+📦 Creating backup on staging.example.com...
 
 🔌 Connecting to staging.example.com...
 ✅ Connected!
@@ -103,13 +103,13 @@ move-site backup list <environment>
 ### Example
 
 ```bash
-move-site backup list test
+move-site backup list staging.example.com
 ```
 
 ### Output
 
 ```
-📋 Listing backups on test...
+📋 Listing backups on staging.example.com...
 
    Found 5 backup(s):
 
@@ -141,13 +141,13 @@ move-site backup download <environment> [options]
 
 ```bash
 # Interactive selection
-move-site backup download test
+move-site backup download staging.example.com
 
 # Download all backups
-move-site backup download test --all
+move-site backup download staging.example.com --all
 
 # Specify output directory
-move-site backup download test -o ~/Desktop/site-backups
+move-site backup download staging.example.com -o ~/Desktop/site-backups
 ```
 
 ### Interactive Selection
@@ -155,7 +155,7 @@ move-site backup download test -o ~/Desktop/site-backups
 When run without `--all`, an interactive selector appears:
 
 ```
-📥 Download backups from test...
+📥 Download backups from staging.example.com...
 
 🔌 Connecting to staging.example.com...
 ✅ Connected!
@@ -188,16 +188,16 @@ move-site backup delete <environment> [options]
 
 ```bash
 # Interactive selection
-move-site backup delete test
+move-site backup delete staging.example.com
 
 # Delete all backups
-move-site backup delete test --all
+move-site backup delete staging.example.com --all
 ```
 
 ### Interactive Selection
 
 ```
-🗑️  Delete backups on test...
+🗑️  Delete backups on staging.example.com...
 
 Select backups to delete (Space to select, Enter to confirm):
 
@@ -226,10 +226,10 @@ move-site backup restore <environment> [options]
 
 ```bash
 # Interactive selection and restore
-move-site backup restore test
+move-site backup restore staging.example.com
 
 # Preview restore
-move-site backup restore test --dry-run
+move-site backup restore staging.example.com --dry-run
 ```
 
 ### Restore Workflow
@@ -241,7 +241,7 @@ move-site backup restore test --dry-run
 ### File Restore
 
 ```
-🔄 Restore backup on test...
+🔄 Restore backup on staging.example.com...
 
 🔌 Connecting to staging.example.com...
 ✅ Connected!
@@ -270,7 +270,7 @@ Are you sure you want to restore this backup? (yes/no): yes
 Database backups are detected by the `-database` in the filename:
 
 ```
-🔄 Restore backup on test...
+🔄 Restore backup on staging.example.com...
 
 Select backup to restore:
 
@@ -336,7 +336,7 @@ All backups are stored in a `backups` folder within your remote path:
 The `upload` command creates backups automatically before uploading. To skip:
 
 ```bash
-move-site upload test --themes --no-backup
+move-site upload staging.example.com --themes --no-backup
 ```
 
 ---

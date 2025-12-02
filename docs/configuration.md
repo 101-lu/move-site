@@ -27,16 +27,18 @@ move-site config --force
 
 ## Configuration File Structure
 
+Environments are keyed by their domain (without protocol). This enables easy CLI usage and database URL replacement during migration.
+
 ```json
 {
   "version": "1.0",
   "name": "my-website",
   "cms": "wordpress",
   "environments": {
-    "production": { ... },
-    "test": { ... },
-    "development": { ... },
-    "local": { ... }
+    "example.com": { "type": "production", "url": "https://example.com", ... },
+    "staging.example.com": { "type": "test", "url": "https://staging.example.com", ... },
+    "dev.example.com": { "type": "development", "url": "https://dev.example.com", ... },
+    "example.local": { "type": "local", "url": "https://example.local", ... }
   },
   "options": {
     "excludePatterns": []
@@ -54,6 +56,8 @@ Each environment has the following structure:
 
 ```json
 {
+  "type": "production",
+  "url": "https://example.com",
   "ssh": {
     "host": "example.com",
     "port": 22,
@@ -77,6 +81,8 @@ Each environment has the following structure:
 
 ```json
 {
+  "type": "local",
+  "url": "https://mysite.local",
   "remotePath": "/Users/developer/Sites/mysite",
   "database": {
     "host": "localhost",
@@ -147,12 +153,16 @@ When uploading files to a server, the files may be owned by the SSH user. If you
 
 ## Environment Types
 
+Each environment has a `type` field that indicates its purpose:
+
 | Type | Description |
 |------|-------------|
 | `production` | Live production server |
 | `test` | Staging/test server |
 | `development` | Development server |
 | `local` | Local machine (no SSH required) |
+
+The environment key (domain) is used for database URL replacement during migrations.
 
 ---
 
@@ -164,7 +174,9 @@ When uploading files to a server, the files may be owned by the SSH user. If you
   "name": "company-website",
   "cms": "wordpress",
   "environments": {
-    "production": {
+    "company.com": {
+      "type": "production",
+      "url": "https://company.com",
       "ssh": {
         "host": "prod.example.com",
         "port": 22,
@@ -182,7 +194,9 @@ When uploading files to a server, the files may be owned by the SSH user. If you
         "tablePrefix": "wp_"
       }
     },
-    "test": {
+    "staging.company.com": {
+      "type": "test",
+      "url": "https://staging.company.com",
       "ssh": {
         "host": "staging.example.com",
         "port": 22,
@@ -200,7 +214,9 @@ When uploading files to a server, the files may be owned by the SSH user. If you
         "tablePrefix": "wp_"
       }
     },
-    "local": {
+    "company.local": {
+      "type": "local",
+      "url": "https://company.local",
       "remotePath": "/Users/dev/Sites/company",
       "database": {
         "host": "localhost",

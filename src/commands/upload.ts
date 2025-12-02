@@ -6,7 +6,7 @@ import { promisify } from 'util';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
-import type { SiteConfig, UploadOptions, FileInfo, CMSAdapter, EnvironmentType } from '../types/index.js';
+import type { SiteConfig, UploadOptions, FileInfo, CMSAdapter } from '../types/index.js';
 
 const execAsync = promisify(exec);
 
@@ -22,7 +22,7 @@ interface FileCategories {
  * Upload files to a remote environment
  */
 export async function runUpload(environment: string, options: UploadOptions, config: SiteConfig): Promise<void> {
-  const envConfig = config.environments[environment as EnvironmentType];
+  const envConfig = config.environments[environment];
 
   if (!envConfig) {
     console.error(`❌ Environment "${environment}" not found in configuration.`);
@@ -81,7 +81,7 @@ export async function runUpload(environment: string, options: UploadOptions, con
   }
 
   // Check if this is a local environment (no SSH config means local)
-  if (environment === 'local' || !envConfig.ssh) {
+  if (envConfig.type === 'local' || !envConfig.ssh) {
     console.log('\n📁 Local environment - copying files locally...');
     // TODO: Implement local file copy
     console.log(`   Would copy ${files.length} files to ${envConfig.remotePath}`);

@@ -40,11 +40,11 @@ npm link
 # Run the configuration wizard
 move-site config
 
-# Upload themes to test environment
-move-site upload test --themes
+# Upload themes to staging environment
+move-site upload staging.example.com --themes
 
 # Create a database backup
-move-site backup create production --database
+move-site backup create example.com --database
 ```
 
 ---

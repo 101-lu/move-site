@@ -47,6 +47,10 @@ export type EnvironmentType = 'production' | 'test' | 'development' | 'local';
  * Note: ssh is optional for local environments
  */
 export interface EnvironmentConfig {
+  /** Type of environment (production, test, development, local) */
+  type: EnvironmentType;
+  /** Full URL with protocol (e.g., https://example.com) */
+  url: string;
   ssh?: SSHConfig;
   remotePath: string;
   database: DatabaseConfig;
@@ -66,12 +70,13 @@ export type CMSType = 'wordpress' | 'drupal' | 'custom';
 
 /**
  * Main application configuration structure
+ * Environments are keyed by domain (e.g., "https://example.com")
  */
 export interface SiteConfig {
   version: string;
   name: string;
   cms: CMSType;
-  environments: Partial<Record<EnvironmentType, EnvironmentConfig>>;
+  environments: Record<string, EnvironmentConfig>;
   options: ConfigOptions;
 }
 
@@ -250,7 +255,8 @@ export interface SelectItem<T = string> {
  * Current environment being configured in the wizard
  */
 export interface WizardEnvironmentState {
-  name: string;
+  domain: string;
+  url: string;
   type: EnvironmentType;
   ssh: {
     host: string;
@@ -278,6 +284,7 @@ export interface WizardEnvironmentState {
 export type WizardStep =
   | 'cms_select'
   | 'site_name'
+  | 'env_domain'
   | 'env_type'
   | 'ssh_host'
   | 'ssh_port'

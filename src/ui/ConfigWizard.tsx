@@ -17,6 +17,7 @@ import type {
 const STEPS: Record<string, WizardStep> = {
   CMS_SELECT: 'cms_select',
   SITE_NAME: 'site_name',
+  ENV_DOMAIN: 'env_domain',
   ENV_TYPE: 'env_type',
   SSH_HOST: 'ssh_host',
   SSH_PORT: 'ssh_port',
@@ -44,7 +45,7 @@ const CMS_OPTIONS: SelectItem<CMSType>[] = [
 
 const ENV_TYPE_OPTIONS: SelectItem<EnvironmentType>[] = [
   { label: 'Production', value: 'production' },
-  { label: 'Staging / Test', value: 'test' },
+  { label: 'Test', value: 'test' },
   { label: 'Development', value: 'development' },
   { label: 'Local', value: 'local' },
 ];
@@ -60,7 +61,8 @@ const YES_NO_OPTIONS: SelectItem<boolean>[] = [
 ];
 
 const createInitialEnvState = (): WizardEnvironmentState => ({
-  name: '',
+  domain: '',
+  url: '',
   type: 'test',
   ssh: {
     host: '',
@@ -85,9 +87,10 @@ const createInitialEnvState = (): WizardEnvironmentState => ({
 /**
  * Convert an existing EnvironmentConfig to WizardEnvironmentState for editing
  */
-const envConfigToState = (type: EnvironmentType, env: EnvironmentConfig): WizardEnvironmentState => ({
-  name: '',
-  type,
+const envConfigToState = (domain: string, env: EnvironmentConfig): WizardEnvironmentState => ({
+  domain,
+  url: env.url || `https://${domain}`,
+  type: env.type || 'test',
   ssh: {
     host: env.ssh?.host || '',
     port: String(env.ssh?.port || 22),
@@ -115,7 +118,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
   // Determine initial step based on whether we have existing config
   const getInitialStep = (): WizardStep => {
     if (isEditMode) {
-      return STEPS.ENV_TYPE; // Skip to environment selection when editing
+      return STEPS.ENV_DOMAIN; // Skip to environment domain when editing
     }
     return STEPS.CMS_SELECT;
   };
@@ -182,6 +185,9 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
     switch (targetStep) {
       case STEPS.SITE_NAME:
         setInputValue(config.name);
+        break;
+      case STEPS.ENV_DOMAIN:
+        setInputValue(currentEnv.domain);
         break;
       case STEPS.SSH_HOST:
         setInputValue(currentEnv.ssh.host);
@@ -255,26 +261,16 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
 
   const handleEnvTypeSelect = (item: SelectItem<EnvironmentType>) => {
     const envType = item.value;
-    const existingEnv = config.environments[envType];
     
-    if (existingEnv) {
-      // Load existing environment data for editing
-      const envState = envConfigToState(envType, existingEnv);
-      setCurrentEnv(envState);
-      setIsEditing(true);
-    } else {
-      // New environment
-      setCurrentEnv((prev) => ({ ...createInitialEnvState(), type: envType }));
-      setIsEditing(false);
-    }
+    setCurrentEnv((prev) => ({ ...prev, type: envType }));
 
     // Skip SSH configuration for local environments
     if (envType === 'local') {
-      const path = existingEnv?.remotePath || process.cwd();
+      const path = currentEnv.remotePath || process.cwd();
       setInputValue(path);
       goToStep(STEPS.LOCAL_PATH);
     } else {
-      const host = existingEnv?.ssh?.host || '';
+      const host = currentEnv.ssh?.host || '';
       setInputValue(host);
       goToStep(STEPS.SSH_HOST);
     }
@@ -301,7 +297,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
       setIsEditing(false);
       // Reset history for new environment
       setStepHistory([]);
-      setStep(STEPS.ENV_TYPE);
+      setStep(STEPS.ENV_DOMAIN);
     } else {
       goToStep(STEPS.CONFIRM);
     }
@@ -319,6 +315,27 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
     switch (step) {
       case STEPS.SITE_NAME:
         setConfig((prev) => ({ ...prev, name: value }));
+        setInputValue('');
+        goToStep(STEPS.ENV_DOMAIN);
+        break;
+
+      case STEPS.ENV_DOMAIN:
+        // Strip protocol if user accidentally included it
+        const domain = value.replace(/^https?:\/\//, '').replace(/\/$/, '');
+        const url = `https://${domain}`;
+        
+        // Check if this domain already exists
+        const existingEnv = config.environments[domain];
+        if (existingEnv) {
+          // Load existing environment data for editing
+          const envState = envConfigToState(domain, existingEnv);
+          setCurrentEnv(envState);
+          setIsEditing(true);
+        } else {
+          // New environment with this domain
+          setCurrentEnv((prev) => ({ ...createInitialEnvState(), domain, url }));
+          setIsEditing(false);
+        }
         setInputValue('');
         goToStep(STEPS.ENV_TYPE);
         break;
@@ -466,6 +483,8 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
   const saveEnvironment = (envState: WizardEnvironmentState) => {
     // Build environment config - SSH is optional for local environments
     const envConfig: any = {
+      type: envState.type,
+      url: envState.url,
       remotePath: envState.remotePath,
       database: {
         host: envState.database.host,
@@ -488,11 +507,12 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
         ...(envState.ssh.filesGroup ? { filesGroup: envState.ssh.filesGroup } : {}),
       };
     }
+    // Save by domain
     setConfig((prev) => ({
       ...prev,
       environments: {
         ...prev.environments,
-        [envState.type]: envConfig,
+        [envState.domain]: envConfig,
       },
     }));
   };
@@ -522,16 +542,6 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
   );
 
   // Build environment type options with indicators for existing envs
-  const getEnvTypeOptions = (): SelectItem<EnvironmentType>[] => {
-    return ENV_TYPE_OPTIONS.map((opt) => {
-      const exists = !!config.environments[opt.value];
-      return {
-        label: exists ? `${opt.label} ✓` : `${opt.label} (new)`,
-        value: opt.value,
-      };
-    });
-  };
-
   const renderStep = () => {
     switch (step) {
       case STEPS.CMS_SELECT:
@@ -547,15 +557,21 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
       case STEPS.SITE_NAME:
         return renderTextInput('Site name:');
 
+      case STEPS.ENV_DOMAIN:
+        return (
+          <Box flexDirection="column">
+            {renderTextInput('Environment domain (e.g., example.com or mysite.local):')}
+            <Text dimColor>Enter domain without protocol. Used as environment key and for database URL replacement.</Text>
+          </Box>
+        );
+
       case STEPS.ENV_TYPE:
         return (
           <Box flexDirection="column">
             <Text bold color="cyan">
-              Select environment to {isEditMode ? 'add or edit' : 'configure'}:
+              Select environment type for "{currentEnv.domain}":
             </Text>
-            <Text dimColor>(✓ = existing, will be edited)</Text>
-            <Text> </Text>
-            <SelectInput items={getEnvTypeOptions()} onSelect={handleEnvTypeSelect} />
+            <SelectInput items={ENV_TYPE_OPTIONS} onSelect={handleEnvTypeSelect} />
           </Box>
         );
 
@@ -633,7 +649,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
       case STEPS.ADD_ANOTHER:
         return (
           <Box flexDirection="column">
-            <Text color="green">✓ Environment "{currentEnv.type}" {isEditing ? 'updated' : 'added'}!</Text>
+            <Text color="green">✓ Environment "{currentEnv.domain}" ({currentEnv.type}) {isEditing ? 'updated' : 'added'}!</Text>
             <Text> </Text>
             <Text bold color="cyan">
               Add or edit another environment?

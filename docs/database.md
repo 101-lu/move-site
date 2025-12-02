@@ -51,13 +51,13 @@ move-site backup create <environment> --database
 ### Example
 
 ```bash
-move-site backup create production --database
+move-site backup create example.com --database
 ```
 
 ### Output
 
 ```
-📦 Creating backup on production...
+📦 Creating backup on example.com...
 
 🔌 Connecting to example.com...
 ✅ Connected!
@@ -120,13 +120,13 @@ Then select a database backup (files containing `-database.` in the name).
 ### Example
 
 ```bash
-move-site backup restore test
+move-site backup restore staging.example.com
 ```
 
 ### Interactive Selection
 
 ```
-🔄 Restore backup on test...
+🔄 Restore backup on staging.example.com...
 
 🔌 Connecting to staging.example.com...
 ✅ Connected!
@@ -166,10 +166,10 @@ Preview database operations without making changes:
 
 ```bash
 # Preview backup
-move-site backup create test --database --dry-run
+move-site backup create staging.example.com --database --dry-run
 
 # Preview restore
-move-site backup restore test --dry-run
+move-site backup restore staging.example.com --dry-run
 ```
 
 ### Dry Run Output
@@ -187,20 +187,20 @@ move-site backup restore test --dry-run
 
 ```bash
 # Create backup on production
-move-site backup create production --database
+move-site backup create example.com --database
 
 # Download to local machine
-move-site backup download production
+move-site backup download example.com
 ```
 
 ### Workflow 2: Sync Database to Staging
 
 ```bash
 # 1. Backup production database
-move-site backup create production --database
+move-site backup create example.com --database
 
 # 2. Download the backup
-move-site backup download production -o ./temp-backups
+move-site backup download example.com -o ./temp-backups
 
 # 3. Upload backup to staging server manually or restore from production backup
 ```
@@ -209,10 +209,10 @@ move-site backup download production -o ./temp-backups
 
 ```bash
 # 1. List available backups
-move-site backup list test
+move-site backup list staging.example.com
 
 # 2. Restore the database
-move-site backup restore test
+move-site backup restore staging.example.com
 # Select the database backup from the list
 ```
 

@@ -4,7 +4,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { SSHTransfer } from '../transfer/ssh.js';
 import { BackupSelector, BackupFile } from '../ui/BackupSelector.js';
-import type { SiteConfig, UploadOptions, EnvironmentType } from '../types/index.js';
+import type { SiteConfig, UploadOptions } from '../types/index.js';
 
 /**
  * WordPress folder paths for backup
@@ -66,7 +66,7 @@ function getFoldersToBackup(options: UploadOptions): { name: string; path: strin
  * Create a backup of files on the remote environment
  */
 export async function runBackup(environment: string, options: UploadOptions, config: SiteConfig): Promise<void> {
-  const envConfig = config.environments[environment as EnvironmentType];
+  const envConfig = config.environments[environment];
 
   if (!envConfig) {
     console.error(`❌ Environment "${environment}" not found in configuration.`);
@@ -216,7 +216,7 @@ export async function runBackup(environment: string, options: UploadOptions, con
  * List existing backups on the remote environment
  */
 export async function listBackups(environment: string, config: SiteConfig): Promise<void> {
-  const envConfig = config.environments[environment as EnvironmentType];
+  const envConfig = config.environments[environment];
 
   if (!envConfig) {
     console.error(`❌ Environment "${environment}" not found in configuration.`);
@@ -292,7 +292,7 @@ export async function deleteBackups(
   config: SiteConfig,
   deleteAll: boolean = false
 ): Promise<void> {
-  const envConfig = config.environments[environment as EnvironmentType];
+  const envConfig = config.environments[environment];
 
   if (!envConfig?.ssh) {
     console.error('❌ Delete backups is only available for remote environments.');
@@ -401,7 +401,7 @@ export async function downloadBackups(
   downloadAll: boolean = false,
   outputDir: string = './backups'
 ): Promise<void> {
-  const envConfig = config.environments[environment as EnvironmentType];
+  const envConfig = config.environments[environment];
 
   if (!envConfig?.ssh) {
     console.error('❌ Download backups is only available for remote environments.');
@@ -487,7 +487,7 @@ export async function restoreBackup(
   config: SiteConfig,
   dryRun: boolean = false
 ): Promise<void> {
-  const envConfig = config.environments[environment as EnvironmentType];
+  const envConfig = config.environments[environment];
 
   if (!envConfig?.ssh) {
     console.error('❌ Restore backup is only available for remote environments.');
