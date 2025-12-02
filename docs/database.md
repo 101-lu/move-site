@@ -6,7 +6,10 @@ Move Site supports database backup and restore operations for WordPress sites. T
 
 ## Overview
 
-Database operations run on the **remote server** using MySQL command-line tools (`mysqldump` and `mysql`). Your remote server must have these tools installed and accessible.
+Database operations include:
+- **Backup**: Create database dumps on remote servers
+- **Restore**: Restore database backups on remote servers
+- **Upload**: Migrate local database to remote with automatic URL replacement
 
 ---
 
@@ -295,10 +298,95 @@ For very large databases:
 
 Current limitations of database operations:
 
-1. **No search-replace**: URLs are not automatically updated when moving between environments
-2. **Full table restore**: Individual tables cannot be selected
-3. **No incremental backups**: Each backup is a full database dump
-4. **Remote only**: Database operations run on remote server, not local
+1. **Full table restore**: Individual tables cannot be selected during restore
+2. **No incremental backups**: Each backup is a full database dump
+
+---
+
+## Database Upload
+
+Upload your local database to a remote environment with automatic URL replacement.
+
+### Usage
+
+```bash
+# Upload database only
+move-site upload <target-environment> --database
+
+# Upload files and database together
+move-site upload <target-environment> --all
+```
+
+### Example
+
+```bash
+move-site upload staging.example.com --database
+```
+
+### What Happens
+
+1. **Select source**: Choose which local environment to upload from
+2. **Backup target**: Automatically backs up the target database first
+3. **Dump local**: Creates a dump of your local database
+4. **Upload**: Transfers the SQL file to the remote server
+5. **Restore**: Imports the SQL into the target database
+6. **URL replacement**: Updates all WordPress URLs from source to target domain
+7. **wp-config update** (with `--all`): Updates `WP_HOME` and `WP_SITEURL` constants
+
+### URL Replacement
+
+When migrating databases, Move Site automatically updates URLs in these WordPress tables:
+
+| Table | Fields |
+|-------|--------|
+| `wp_options` | `option_value` (for `home`, `siteurl`) |
+| `wp_posts` | `guid`, `post_content` |
+| `wp_postmeta` | `meta_value` |
+| `wp_comments` | `comment_content`, `comment_author_url` |
+| `wp_termmeta` | `meta_value` |
+
+URLs are replaced from the source environment's URL to the target environment's URL as configured in your `.move-site-config.json`.
+
+### wp-config.php Updates
+
+When using `--all`, Move Site also updates these constants in `wp-config.php`:
+
+```php
+define('WP_HOME', 'https://target-domain.com');
+define('WP_SITEURL', 'https://target-domain.com');
+```
+
+---
+
+## Local App (Flywheel) Support
+
+If you use [Local](https://localwp.com/) by Flywheel, Move Site can connect to your Local databases using the app's shell script environment.
+
+### Configuration
+
+```json
+{
+  "mysite.local": {
+    "type": "local",
+    "url": "https://mysite.local",
+    "remotePath": "~/Local Sites/mysite/app/public",
+    "database": {
+      "host": "localhost",
+      "port": 10003,
+      "name": "local",
+      "user": "root",
+      "password": "root",
+      "tablePrefix": "wp_",
+      "socket": "~/Library/Application Support/Local/run/[SITE_ID]/mysql/mysqld.sock"
+    },
+    "localApp": {
+      "shellScript": "~/Library/Application Support/Local/ssh-entry/[SITE_ID].sh"
+    }
+  }
+}
+```
+
+See the [Configuration Guide](./configuration.md#local-app-flywheel-environment) for details on finding your Local site ID.
 
 ---
 
@@ -306,9 +394,7 @@ Current limitations of database operations:
 
 Planned features for database operations:
 
-- [ ] Search-replace for URLs during migration
 - [ ] Selective table backup/restore
-- [ ] Local database operations
 - [ ] Database comparison between environments
 
 ---

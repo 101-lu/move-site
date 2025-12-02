@@ -35,6 +35,20 @@ export interface DatabaseConfig {
   password: string;
   /** Table prefix for CMS (e.g., 'wp_' for WordPress) */
   tablePrefix?: string;
+  /** Socket path for local database connections (e.g., Local app uses socket) */
+  socket?: string;
+}
+
+/**
+ * Local environment configuration for apps like Local (by Flywheel)
+ */
+export interface LocalAppConfig {
+  /** Path to shell script that sets up the environment (e.g., Local's ssh-entry script) */
+  shellScript?: string;
+  /** Direct path to mysql binary (alternative to shellScript) */
+  mysqlPath?: string;
+  /** Direct path to mysqldump binary (alternative to shellScript) */
+  mysqldumpPath?: string;
 }
 
 /**
@@ -54,6 +68,8 @@ export interface EnvironmentConfig {
   ssh?: SSHConfig;
   remotePath: string;
   database: DatabaseConfig;
+  /** Configuration for local development apps like Local (by Flywheel) */
+  localApp?: LocalAppConfig;
 }
 
 /**

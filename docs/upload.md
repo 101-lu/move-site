@@ -19,11 +19,17 @@ move-site upload staging.example.com --themes
 # Upload plugins and uploads to production
 move-site upload example.com --plugins --uploads
 
-# Upload everything
+# Upload everything (files + database + wp-config update)
 move-site upload staging.example.com --all
+
+# Upload only database (with URL replacement)
+move-site upload staging.example.com --database
 
 # Preview what would be uploaded (dry run)
 move-site upload staging.example.com --themes --dry-run
+
+# Upload files and database, skip backup
+move-site upload staging.example.com --all --no-backup
 ```
 
 ---
@@ -32,12 +38,12 @@ move-site upload staging.example.com --themes --dry-run
 
 | Option | Description |
 |--------|-------------|
-| `--all` | Upload all WordPress files |
+| `--all` | Upload all files, database, and update wp-config.php |
 | `--themes` | Upload `wp-content/themes` folder |
 | `--plugins` | Upload `wp-content/plugins` folder |
 | `--uploads` | Upload `wp-content/uploads` folder |
 | `--core` | Upload WordPress core files (`wp-admin`, `wp-includes`, root PHP files) |
-| `--database` | Export and upload the database (not yet implemented) |
+| `--database` | Export local database, upload and import on remote, replace URLs |
 | `--dry-run` | Show what would be uploaded without uploading |
 | `--verbose` | Show all files in dry-run mode (instead of first 5) |
 | `--no-backup` | Skip creating a backup before upload |
@@ -68,6 +74,27 @@ The archive is extracted on the remote server, replacing existing files.
 
 ### 6. Set File Ownership
 If `filesOwner` is configured, ownership is updated for all uploaded files.
+
+### 7. Database Upload (if --database or --all)
+When using `--database` or `--all`:
+
+1. **Select local environment** - If multiple local environments exist, you'll be prompted to select one
+2. **Backup remote database** - Creates a backup on the target server before making changes
+3. **Dump local database** - Exports the local database using mysqldump
+4. **Upload to remote** - Transfers the dump file via SFTP
+5. **Import on remote** - Imports the database on the target server
+6. **Replace URLs** - Updates WordPress URLs in the database:
+   - `wp_options` (home, siteurl)
+   - `wp_posts` (guid, post_content)
+   - `wp_postmeta` (meta_value)
+   - `wp_comments` (comment_content, comment_author_url)
+   - `wp_termmeta` (meta_value)
+
+### 8. Update wp-config.php (if --all)
+When using `--all`, the remote wp-config.php is updated with:
+- Correct database credentials (DB_NAME, DB_USER, DB_PASSWORD, DB_HOST)
+- Updated table prefix if different
+- URL replacements (WP_HOME, WP_SITEURL if defined)
 
 ---
 

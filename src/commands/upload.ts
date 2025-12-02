@@ -1,6 +1,7 @@
 import { getAdapter } from '../cms/index.js';
 import { SSHTransfer } from '../transfer/ssh.js';
 import { runBackup } from './backup.js';
+import { selectLocalEnvironment, uploadDatabase, updateWpConfig } from './database.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs/promises';
@@ -49,16 +50,24 @@ export async function runUpload(environment: string, options: UploadOptions, con
     console.log(`📦 WordPress version: ${version}`);
   }
 
-  // Get files to upload
-  console.log('🔍 Scanning files...');
-  const files = await adapter.getFilesToUpload(options);
+  // Check if this is a database-only upload
+  const isDatabaseOnly = options.database && !options.all && !options.uploads && !options.plugins && !options.themes && !options.core;
 
-  if (files.length === 0) {
+  // Get files to upload (skip if database-only)
+  let files: FileInfo[] = [];
+  if (!isDatabaseOnly) {
+    console.log('🔍 Scanning files...');
+    files = await adapter.getFilesToUpload(options);
+  }
+
+  if (files.length === 0 && !isDatabaseOnly) {
     console.log('ℹ️  No files to upload.');
     return;
   }
 
-  console.log(`📁 Found ${files.length} files to upload`);
+  if (!isDatabaseOnly) {
+    console.log(`📁 Found ${files.length} files to upload`);
+  }
 
   // Show what will be uploaded
   if (options.dryRun) {
@@ -77,6 +86,25 @@ export async function runUpload(environment: string, options: UploadOptions, con
         }
       }
     }
+
+    // Show database info for dry run
+    if (options.database || options.all) {
+      console.log('\n🗄️  Database:');
+      const localEnv = await selectLocalEnvironment(config);
+      if (localEnv) {
+        console.log(`   Source: ${localEnv.domain} (${localEnv.env.database?.name})`);
+        console.log(`   Target: ${environment} (${envConfig.database?.name})`);
+        console.log(`   URL replacement: ${localEnv.env.url} → ${envConfig.url}`);
+      } else {
+        console.log('   ⚠️  No local environment selected');
+      }
+    }
+
+    if (options.all) {
+      console.log('\n⚙️  wp-config.php:');
+      console.log('   Would update database settings and URLs');
+    }
+
     return;
   }
 
@@ -88,68 +116,70 @@ export async function runUpload(environment: string, options: UploadOptions, con
     return;
   }
 
-  // Create backup before uploading (unless --no-backup is set)
-  // Note: Commander.js converts --no-backup to options.backup (true by default, false when flag is used)
-  if (options.backup !== false) {
-    console.log('\n💾 Creating backup before upload...');
-    // Create backup options matching what we're uploading
-    const backupOptions: UploadOptions = {
-      all: options.all,
-      uploads: options.uploads,
-      plugins: options.plugins,
-      themes: options.themes,
-      core: options.core,
-    };
-    await runBackup(environment, backupOptions, config);
-    console.log(''); // Add spacing after backup
-  } else {
-    console.log('\n⚠️  Skipping backup (--no-backup flag set)');
-  }
-
-  // Connect and upload via SSH
-  console.log(`\n🔌 Connecting to ${envConfig.ssh.host}...`);
-
-  const transfer = new SSHTransfer(envConfig);
-
-  try {
-    await transfer.connect();
-    console.log('✅ Connected!\n');
-
-    // Create a temporary archive locally
-    const tempDir = os.tmpdir();
-    const archiveName = `move-site-upload-${Date.now()}.tar.gz`;
-    const localArchivePath = path.join(tempDir, archiveName);
-    const remoteArchivePath = `${envConfig.remotePath}/${archiveName}`;
-
-    console.log('📦 Creating local archive...');
-    
-    // Determine what folders to include based on options
-    let includePaths: string[] = [];
-    
-    if (options.all || (!options.uploads && !options.plugins && !options.themes && !options.core)) {
-      // All files - exclude common dev folders
-      includePaths = ['.'];
+  // File upload section (skip if database-only)
+  if (!isDatabaseOnly) {
+    // Create backup before uploading (unless --no-backup is set)
+    // Note: Commander.js converts --no-backup to options.backup (true by default, false when flag is used)
+    if (options.backup !== false) {
+      console.log('\n💾 Creating backup before upload...');
+      // Create backup options matching what we're uploading
+      const backupOptions: UploadOptions = {
+        all: options.all,
+        uploads: options.uploads,
+        plugins: options.plugins,
+        themes: options.themes,
+        core: options.core,
+      };
+      await runBackup(environment, backupOptions, config);
+      console.log(''); // Add spacing after backup
     } else {
-      if (options.themes) includePaths.push('wp-content/themes');
-      if (options.plugins) includePaths.push('wp-content/plugins');
-      if (options.uploads) includePaths.push('wp-content/uploads');
-      if (options.core) {
-        includePaths.push('wp-admin', 'wp-includes');
-        // Add root PHP files
-        includePaths.push('*.php');
-      }
+      console.log('\n⚠️  Skipping backup (--no-backup flag set)');
     }
 
-    // Build tar command with exclusions
-    const excludes = [
-      '--exclude=node_modules',
-      '--exclude=vendor',
-      '--exclude=.git',
-      '--exclude=.svn',
-      '--exclude=.DS_Store',
-      '--exclude=Thumbs.db',
-      '--exclude=.idea',
-      '--exclude=.vscode',
+    // Connect and upload via SSH
+    console.log(`\n🔌 Connecting to ${envConfig.ssh.host}...`);
+
+    const transfer = new SSHTransfer(envConfig);
+
+    try {
+      await transfer.connect();
+      console.log('✅ Connected!\n');
+
+      // Create a temporary archive locally
+      const tempDir = os.tmpdir();
+      const archiveName = `move-site-upload-${Date.now()}.tar.gz`;
+      const localArchivePath = path.join(tempDir, archiveName);
+      const remoteArchivePath = `${envConfig.remotePath}/${archiveName}`;
+
+      console.log('📦 Creating local archive...');
+      
+      // Determine what folders to include based on options
+      let includePaths: string[] = [];
+      
+      if (options.all || (!options.uploads && !options.plugins && !options.themes && !options.core && !options.database)) {
+        // All files - exclude common dev folders
+        includePaths = ['.'];
+      } else {
+        if (options.themes) includePaths.push('wp-content/themes');
+        if (options.plugins) includePaths.push('wp-content/plugins');
+        if (options.uploads) includePaths.push('wp-content/uploads');
+        if (options.core) {
+          includePaths.push('wp-admin', 'wp-includes');
+          // Add root PHP files
+          includePaths.push('*.php');
+        }
+      }
+
+      // Build tar command with exclusions
+      const excludes = [
+        '--exclude=node_modules',
+        '--exclude=vendor',
+        '--exclude=.git',
+        '--exclude=.svn',
+        '--exclude=.DS_Store',
+        '--exclude=Thumbs.db',
+        '--exclude=.idea',
+        '--exclude=.vscode',
       '--exclude=backups',
       '--exclude=.move-site-config.json',
       '--exclude=*.log',
@@ -226,6 +256,41 @@ export async function runUpload(environment: string, options: UploadOptions, con
     process.exit(1);
   } finally {
     await transfer.disconnect();
+  }
+  } // End of file upload section (if !isDatabaseOnly)
+
+  // Database upload and wp-config update (if --database or --all is set)
+  if (options.database || options.all) {
+    console.log('\n' + '─'.repeat(50));
+    console.log('🗄️  Database Upload');
+    console.log('─'.repeat(50));
+
+    // Select local environment as source (only once)
+    const localEnv = await selectLocalEnvironment(config);
+    if (!localEnv) {
+      console.log('⚠️  Database upload cancelled - no local environment selected');
+    } else {
+      const targetEnv = { domain: environment, env: envConfig };
+      await uploadDatabase(localEnv, targetEnv, config, {
+        dryRun: options.dryRun,
+        skipBackup: options.backup === false,
+      });
+
+      // Update wp-config.php (if --all is set)
+      if (options.all) {
+        console.log('\n' + '─'.repeat(50));
+        console.log('⚙️  Updating wp-config.php');
+        console.log('─'.repeat(50));
+
+        console.log(`\n🔧 Updating wp-config.php on ${environment}...`);
+        const result = await updateWpConfig(targetEnv, localEnv.env.url);
+        if (result.success) {
+          console.log('   ✅ wp-config.php updated');
+        } else {
+          console.log(`   ⚠️  Could not update wp-config.php: ${result.error}`);
+        }
+      }
+    }
   }
 }
 

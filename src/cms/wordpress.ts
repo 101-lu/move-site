@@ -92,8 +92,13 @@ export class WordPressAdapter implements CMSAdapter {
   async getFilesToUpload(options: UploadOptions = {}): Promise<FileInfo[]> {
     const files: FileInfo[] = [];
 
+    // If only database is requested, return empty (no files to upload)
+    if (options.database && !options.all && !options.uploads && !options.plugins && !options.themes && !options.core) {
+      return [];
+    }
+
     // If no specific options, upload everything
-    const uploadAll = options.all || (!options.uploads && !options.plugins && !options.themes && !options.core);
+    const uploadAll = options.all || (!options.uploads && !options.plugins && !options.themes && !options.core && !options.database);
 
     if (uploadAll) {
       const allFiles = await this.getAllFiles(this.basePath);

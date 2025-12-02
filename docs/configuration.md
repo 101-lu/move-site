@@ -94,6 +94,61 @@ Each environment has the following structure:
 }
 ```
 
+### Local App (Flywheel) Environment
+
+If you use [Local](https://localwp.com/) by Flywheel for local WordPress development, you need additional configuration. Local uses its own MySQL binaries and requires a shell script to set up the environment.
+
+#### Finding Your Local Site Configuration
+
+1. Open Local and right-click on your site
+2. Select **"Open Site Shell"** - this opens a terminal with the correct MySQL environment
+3. The shell script path is shown in Local's site info, typically:
+   ```
+   ~/Library/Application Support/Local/ssh-entry/[SITE_ID].sh
+   ```
+4. The MySQL socket is typically at:
+   ```
+   ~/Library/Application Support/Local/run/[SITE_ID]/mysql/mysqld.sock
+   ```
+
+You can also find the site ID by looking at Local's `sites.json`:
+```bash
+cat ~/Library/Application\ Support/Local/sites.json | grep -A 2 "your-site-name"
+```
+
+#### Configuration Example
+
+```json
+{
+  "mysite.local": {
+    "type": "local",
+    "url": "https://mysite.local",
+    "remotePath": "~/Local Sites/mysite/app/public",
+    "database": {
+      "host": "localhost",
+      "port": 10003,
+      "name": "local",
+      "user": "root",
+      "password": "root",
+      "tablePrefix": "wp_",
+      "socket": "~/Library/Application Support/Local/run/[SITE_ID]/mysql/mysqld.sock"
+    },
+    "localApp": {
+      "shellScript": "~/Library/Application Support/Local/ssh-entry/[SITE_ID].sh"
+    }
+  }
+}
+```
+
+> **Note**: Replace `[SITE_ID]` with your actual site ID (e.g., `8o-e0P_5D`).
+
+#### How It Works
+
+When `localApp.shellScript` is configured:
+1. Move Site sources the shell script before running `mysqldump`
+2. This sets up the correct `PATH` and `MYSQL_HOME` environment variables
+3. The `socket` option tells MySQL to connect via Unix socket instead of TCP
+
 ---
 
 ## SSH Configuration Options
@@ -122,6 +177,7 @@ Each environment has the following structure:
 | `user` | string | Yes | Database username |
 | `password` | string | Yes | Database password |
 | `tablePrefix` | string | No | WordPress table prefix (default: `wp_`) |
+| `socket` | string | No | Unix socket path for MySQL (for Local app) |
 
 ---
 
@@ -217,13 +273,18 @@ The environment key (domain) is used for database URL replacement during migrati
     "company.local": {
       "type": "local",
       "url": "https://company.local",
-      "remotePath": "/Users/dev/Sites/company",
+      "remotePath": "~/Local Sites/company/app/public",
       "database": {
         "host": "localhost",
-        "name": "company_local",
+        "port": 10003,
+        "name": "local",
         "user": "root",
         "password": "root",
-        "tablePrefix": "wp_"
+        "tablePrefix": "wp_",
+        "socket": "~/Library/Application Support/Local/run/abc123/mysql/mysqld.sock"
+      },
+      "localApp": {
+        "shellScript": "~/Library/Application Support/Local/ssh-entry/abc123.sh"
       }
     }
   },
