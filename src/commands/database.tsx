@@ -149,9 +149,10 @@ function wrapWithLocalEnv(cmd: string, localApp?: EnvironmentConfig['localApp'])
   
   // Use a here-document to avoid escaping issues with paths containing spaces
   // Override exec temporarily to prevent the shell script from launching a new shell
+  // Redirect stdout to /dev/null during source to suppress the version output from Local's script
   return `bash <<'LOCALENV'
 exec() { :; }
-source '${shellScript}'
+source '${shellScript}' > /dev/null 2>&1
 unset -f exec
 ${cmd}
 LOCALENV`;
