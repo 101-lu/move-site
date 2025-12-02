@@ -147,17 +147,14 @@ function wrapWithLocalEnv(cmd: string, localApp?: EnvironmentConfig['localApp'])
   
   const shellScript = localApp.shellScript;
   
-  // Create a script that sources the Local shell script (minus the exec $SHELL at the end)
-  // and then runs our command
-  const wrappedScript = `
-# Source Local app environment (filter out exec $SHELL)
-eval "$(grep -v 'exec \\$SHELL' "${shellScript}" | grep -v 'Launching shell')"
-# Run the actual command
+  // Use a here-document to avoid escaping issues with paths containing spaces
+  // Override exec temporarily to prevent the shell script from launching a new shell
+  return `bash <<'LOCALENV'
+exec() { :; }
+source '${shellScript}'
+unset -f exec
 ${cmd}
-`;
-  
-  // Use bash to run the script
-  return `bash -c ${JSON.stringify(wrappedScript)}`;
+LOCALENV`;
 }
 
 /**
