@@ -145,12 +145,19 @@ function wrapWithLocalEnv(cmd: string, localApp?: EnvironmentConfig['localApp'])
     return cmd;
   }
   
-  // Source the shell script to get environment variables, then run the command
-  // We use bash -c to run in a subshell that sources the env setup
   const shellScript = localApp.shellScript;
   
-  // Extract just the environment setup (PATH and MYSQL_HOME) without the interactive shell parts
-  return `bash -c 'source <(grep -E "^export (PATH|MYSQL_HOME)=" "${shellScript}") && ${cmd.replace(/'/g, "'\"'\"'")}'`;
+  // Create a script that sources the Local shell script (minus the exec $SHELL at the end)
+  // and then runs our command
+  const wrappedScript = `
+# Source Local app environment (filter out exec $SHELL)
+eval "$(grep -v 'exec \\$SHELL' "${shellScript}" | grep -v 'Launching shell')"
+# Run the actual command
+${cmd}
+`;
+  
+  // Use bash to run the script
+  return `bash -c ${JSON.stringify(wrappedScript)}`;
 }
 
 /**
