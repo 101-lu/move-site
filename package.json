@@ -2,17 +2,6 @@
   "name": "move-site",
   "version": "1.0.0",
   "description": "CLI utility that help to move sites between hosts",
-  "type": "module",
-  "bin": {
-    "move-site": "./dist/bin/cli.js"
-  },
-  "main": "dist/index.js",
-  "scripts": {
-    "build": "tsc",
-    "start": "npm run build && node dist/bin/cli.js",
-    "dev": "tsc --watch",
-    "prepublishOnly": "npm run build"
-  },
   "keywords": [
     "cli",
     "wordpress",
@@ -22,21 +11,35 @@
     "website",
     "migration"
   ],
-  "author": "Andrey Lechev @ 101 Studios",
+  "homepage": "https://github.com/101-lu/move-site#readme",
+  "bugs": {
+    "url": "https://github.com/101-lu/move-site/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/101-lu/move-site.git"
+  },
   "license": "MIT",
+  "author": "Andrey Lechev @ 101 Studios",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "move-site": "dist/bin/cli.js"
+  },
+  "directories": {
+    "doc": "docs"
+  },
   "files": [
     "dist",
     "README.md",
     "LICENSE"
   ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/101-lu/move-site.git"
+  "scripts": {
+    "build": "tsc",
+    "start": "npm run build && node dist/bin/cli.js",
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build"
   },
-  "bugs": {
-    "url": "https://github.com/101-lu/move-site/issues"
-  },
-  "homepage": "https://github.com/101-lu/move-site#readme",
   "dependencies": {
     "chalk": "^5.3.0",
     "commander": "^12.1.0",
