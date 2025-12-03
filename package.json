@@ -1,6 +1,6 @@
 {
   "name": "move-site",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "CLI utility that help to move sites between hosts",
   "type": "module",
   "bin": {
@@ -24,6 +24,19 @@
   ],
   "author": "Andrey Lechev @ 101 Studios",
   "license": "MIT",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/101-lu/move-site.git"
+  },
+  "bugs": {
+    "url": "https://github.com/101-lu/move-site/issues"
+  },
+  "homepage": "https://github.com/101-lu/move-site#readme",
   "dependencies": {
     "chalk": "^5.3.0",
     "commander": "^12.1.0",
