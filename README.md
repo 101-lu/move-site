@@ -1,15 +1,16 @@
-# Site Move
+# Move Site
 
-CLI tool for moving website files and databases between environments (local, staging, production).
+CLI tool for moving WordPress sites between environments (local, staging, production). Transfer files and databases with automatic URL replacement.
 
 ## Features
 
-- 📁 Transfer files via SSH/SFTP
-- 🔧 Interactive configuration wizard
-- 🎯 WordPress support (more CMS coming soon)
-- 📂 Selective uploads (themes, plugins, uploads, core)
-- 🔒 SSH key or password authentication
-- 📝 Written in TypeScript with full type safety
+- 📁 **File Transfer** - Upload files via SSH/SFTP using efficient tar.gz archives
+- 🗄️ **Database Migration** - Export, upload, and import databases with automatic URL replacement
+- 🔧 **Interactive Wizard** - Easy configuration setup
+- 📂 **Selective Uploads** - Choose themes, plugins, uploads, or core files
+- 🔄 **Backup & Restore** - Create and restore backups on remote servers
+- 🔒 **Secure** - SSH key or password authentication
+- 🖥️ **Local App Support** - Works with [Local](https://localwp.com/) by Flywheel
 
 ## Installation
 
@@ -17,115 +18,183 @@ CLI tool for moving website files and databases between environments (local, sta
 npm install -g move-site
 ```
 
-Or for development:
+## Quick Start
 
-```bash
-git clone <repo>
-cd move-site
-npm install
-npm run build
-npm link
-```
+### 1. Configure Your Project
 
-## Usage
-
-### First Time Setup
-
-Run the configuration wizard:
+Run the configuration wizard in your WordPress directory:
 
 ```bash
 move-site config
 ```
 
-This will create a `.move-site-config.json` file in your project directory.
+This creates a `.move-site-config.json` file with your environment settings.
 
-### Upload Files
-
-Upload to a configured environment:
+### 2. Upload Files
 
 ```bash
-# Upload all files
-move-site upload production
+# Upload themes to staging
+move-site upload staging.example.com --themes
 
-# Upload specific folders
-move-site upload staging --themes
-move-site upload test --plugins --uploads
+# Upload plugins and uploads
+move-site upload example.com --plugins --uploads
 
-# Dry run to see what would be uploaded
-move-site upload production --themes --dry-run
+# Upload everything (files + database)
+move-site upload staging.example.com --all
+
+# Preview what would be uploaded
+move-site upload staging.example.com --themes --dry-run
 ```
 
-### Available Options
-
-| Option       | Description                                        |
-| ------------ | -------------------------------------------------- |
-| `--all`      | Upload all files (default if no options specified) |
-| `--uploads`  | Upload wp-content/uploads                          |
-| `--plugins`  | Upload wp-content/plugins                          |
-| `--themes`   | Upload wp-content/themes                           |
-| `--core`     | Upload WordPress core files                        |
-| `--database` | Export and upload database (coming soon)           |
-| `--dry-run`  | Show what would be uploaded without uploading      |
-
-### Commands
+### 3. Manage Backups
 
 ```bash
-move-site --help       # Show help
-move-site --version    # Show version
-move-site config       # Run configuration wizard
-move-site upload <env> # Upload to environment
+# Create a backup
+move-site backup create staging.example.com --themes
+
+# List backups
+move-site backup list staging.example.com
+
+# Restore from backup
+move-site backup restore staging.example.com
 ```
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `move-site config` | Run configuration wizard |
+| `move-site upload <env>` | Upload files/database to environment |
+| `move-site backup create <env>` | Create backup on remote server |
+| `move-site backup list <env>` | List existing backups |
+| `move-site backup download <env>` | Download backups locally |
+| `move-site backup delete <env>` | Delete backups |
+| `move-site backup restore <env>` | Restore from backup |
+
+## Upload Options
+
+| Option | Description |
+|--------|-------------|
+| `--all` | Upload all files, database, and update wp-config.php |
+| `--themes` | Upload `wp-content/themes` |
+| `--plugins` | Upload `wp-content/plugins` |
+| `--uploads` | Upload `wp-content/uploads` |
+| `--core` | Upload WordPress core files |
+| `--database` | Export local DB, upload, import, and replace URLs |
+| `--dry-run` | Preview without uploading |
+| `--verbose` | Show all files in dry-run |
+| `--no-backup` | Skip creating backup before upload |
 
 ## Configuration
 
-The configuration file (`.move-site-config.json`) stores your environment settings:
+Environments are keyed by domain for easy CLI usage and automatic URL replacement:
 
 ```json
 {
   "version": "1.0",
+  "name": "my-website",
   "cms": "wordpress",
   "environments": {
-    "production": {
+    "example.com": {
       "type": "production",
+      "url": "https://example.com",
       "ssh": {
         "host": "example.com",
         "port": 22,
-        "user": "username",
-        "keyPath": "~/.ssh/id_rsa"
+        "user": "deploy",
+        "keyPath": "~/.ssh/id_rsa",
+        "filesOwner": "www-data"
       },
-      "remotePath": "/var/www/html",
+      "remotePath": "/var/www/html/mysite",
       "database": {
         "host": "localhost",
-        "name": "wordpress_db",
+        "name": "mysite_db",
         "user": "db_user",
-        "password": "db_password"
+        "password": "db_password",
+        "tablePrefix": "wp_"
+      }
+    },
+    "mysite.local": {
+      "type": "local",
+      "url": "https://mysite.local",
+      "remotePath": "~/Sites/mysite",
+      "database": {
+        "host": "localhost",
+        "name": "local",
+        "user": "root",
+        "password": "root",
+        "tablePrefix": "wp_"
       }
     }
-  },
-  "options": {
-    "excludePatterns": [".git", "node_modules", ".DS_Store"]
   }
 }
 ```
 
+### Local App (Flywheel) Support
+
+If you use [Local](https://localwp.com/), add these fields to your local environment:
+
+```json
+{
+  "mysite.local": {
+    "type": "local",
+    "url": "https://mysite.local",
+    "remotePath": "~/Local Sites/mysite/app/public",
+    "database": {
+      "host": "localhost",
+      "name": "local",
+      "user": "root",
+      "password": "root",
+      "tablePrefix": "wp_",
+      "socket": "~/Library/Application Support/Local/run/[SITE_ID]/mysql/mysqld.sock"
+    },
+    "localApp": {
+      "shellScript": "~/Library/Application Support/Local/ssh-entry/[SITE_ID].sh"
+    }
+  }
+}
+```
+
+## Database Migration
+
+When using `--database` or `--all`, Move Site:
+
+1. **Backs up** the target database first
+2. **Dumps** your local database
+3. **Uploads** and imports on the remote server
+4. **Replaces URLs** in WordPress tables:
+   - `wp_options` (home, siteurl)
+   - `wp_posts` (guid, post_content)
+   - `wp_postmeta`, `wp_comments`, `wp_termmeta`
+5. **Updates wp-config.php** (with `--all`)
+
 ## Security
 
-⚠️ **Important**: The config file may contain sensitive credentials. Make sure to:
+⚠️ **Important**: The config file contains sensitive credentials.
 
-1. Add `.move-site-config.json` to your `.gitignore`
-2. Use SSH keys instead of passwords when possible
-3. Secure file permissions: `chmod 600 .move-site-config.json`
+- Add `.move-site-config.json` to your `.gitignore`
+- Use SSH keys instead of passwords when possible
+- Secure file permissions: `chmod 600 .move-site-config.json`
 
-## Roadmap
+## Documentation
 
-- [ ] Database export/import
-- [ ] FTP/FTPS support
-- [ ] Download from remote
-- [ ] Sync (two-way)
-- [ ] Drupal support
-- [ ] Custom CMS support
-- [ ] Backup before upload
+See the [docs](./docs) folder for detailed documentation:
+
+- [Configuration Guide](./docs/configuration.md)
+- [Upload Command](./docs/upload.md)
+- [Backup Command](./docs/backup.md)
+- [Database Operations](./docs/database.md)
+
+## Requirements
+
+- Node.js 18+
+- SSH access to remote servers
+- MySQL/MariaDB on remote servers
 
 ## License
 
 MIT
+
+---
+
+© 2025 [101 Studios](https://101.lu)
