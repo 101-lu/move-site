@@ -130,6 +130,17 @@ export class WordPressAdapter implements CMSAdapter {
           }))
         );
       }
+      // adding mu-plugins if they exist
+      const muPluginsPath = this.folders.muPlugins;
+      if (await this.directoryExists(muPluginsPath)) {
+        const muPluginsFiles = await this.getAllFiles(path.join(this.basePath, muPluginsPath));
+        files.push(
+          ...muPluginsFiles.map((f) => ({
+            ...f,
+            relativePath: path.join(muPluginsPath, f.relativePath),
+          }))
+        );
+      }
     }
 
     if (options.themes) {

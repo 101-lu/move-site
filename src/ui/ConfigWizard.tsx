@@ -758,7 +758,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
       return (
         <Box flexDirection="column" marginBottom={1}>
           <Text bold color="cyan">
-            🎁 Site Move - Edit Configuration
+            🎁 Move Site - Edit Configuration
           </Text>
           <Text>Site: <Text color="green">{config.name}</Text> ({config.cms})</Text>
         </Box>
@@ -767,7 +767,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
     return (
       <Box marginBottom={1}>
         <Text bold color="cyan">
-          🎁 Site Move - Configuration Wizard
+          🎁 Move Site - Configuration Wizard
         </Text>
       </Box>
     );

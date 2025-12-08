@@ -13,7 +13,11 @@ import type { SiteConfig, UploadOptions } from '../types/index.js';
 const WP_FOLDERS: Record<string, string> = {
   themes: 'wp-content/themes',
   plugins: 'wp-content/plugins',
+  // Must-use plugins are in wp-content/mu-plugins
+  muPlugins: 'wp-content/mu-plugins',
+  // Uploads are in wp-content/uploads
   uploads: 'wp-content/uploads',
+  // Core files are at the root level, so we use '.' to indicate current directory
   core: '.', // Root level files
 };
 
@@ -47,6 +51,7 @@ function getFoldersToBackup(options: UploadOptions): { name: string; path: strin
   }
   if (options.plugins) {
     folders.push({ name: 'plugins', path: WP_FOLDERS.plugins });
+    folders.push({ name: 'mu-plugins', path: WP_FOLDERS.muPlugins });
   }
   if (options.uploads) {
     folders.push({ name: 'uploads', path: WP_FOLDERS.uploads });

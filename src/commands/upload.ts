@@ -15,6 +15,7 @@ const execAsync = promisify(exec);
 interface FileCategories {
   Themes: FileInfo[];
   Plugins: FileInfo[];
+  MuPlugins: FileInfo[];
   Uploads: FileInfo[];
   Core: FileInfo[];
   Other: FileInfo[];
@@ -158,7 +159,10 @@ export async function runUpload(environmentId: string, options: UploadOptions, c
         includePaths = ['.'];
       } else {
         if (options.themes) includePaths.push('wp-content/themes');
-        if (options.plugins) includePaths.push('wp-content/plugins');
+        if (options.plugins) {
+          includePaths.push('wp-content/plugins');
+          includePaths.push('wp-content/mu-plugins');
+        }
         if (options.uploads) includePaths.push('wp-content/uploads');
         if (options.core) {
           includePaths.push('wp-admin', 'wp-includes');
@@ -298,6 +302,7 @@ function categorizeFiles(files: FileInfo[]): FileCategories {
   const categories: FileCategories = {
     Themes: [],
     Plugins: [],
+    MuPlugins: [],
     Uploads: [],
     Core: [],
     Other: [],
