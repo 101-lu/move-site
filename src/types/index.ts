@@ -1,5 +1,5 @@
 /**
- * Site Move - Type Definitions
+ * Move Site - Type Definitions
  *
  * This file contains all the TypeScript interfaces and types
  * used throughout the application.
