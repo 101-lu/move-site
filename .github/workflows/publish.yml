@@ -26,12 +26,6 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           always-auth: true
 
-      - name: Check auth (debug)
-        run: npm whoami || true
-        env:
-          NODE_AUTH_TOKEN: ${{ steps.setup-node.outputs.registryAuthToken }}
-
-
       # Ensure npm 11.5.1 or later is installed
       - name: Update and publish to npm
         run: npm install -g npm@latest

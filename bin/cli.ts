@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { runConfigWizard, loadConfig, configExists } from '../src/config/index.js';
 import { runUpload } from '../src/commands/upload.js';
 import { runBackup, listBackups, deleteBackups, downloadBackups, restoreBackup } from '../src/commands/backup.js';
+import { runDownload } from '../src/commands/download.js';
 import type { UploadOptions } from '../src/types/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -127,14 +128,12 @@ backupCmd
 // Download command (placeholder for future)
 program
   .command('download <environment>')
-  .description('Download files from a remote environment')
-  .option('--all', 'Download all files')
-  .option('--uploads', 'Download the uploads folder')
-  .option('--plugins', 'Download the plugins folder')
-  .option('--themes', 'Download the themes folder')
-  .option('--database', 'Download and import the database')
-  .action(async (_environment: string, _options: UploadOptions) => {
-    console.log('Download command coming soon!');
+  .description('Download site archive for WP Migrate Local (zip) or fallback tar.gz')
+  .option('--full', 'Download a full site archive (all files)')
+  .option('-o, --output <path>', 'Local folder where to save the archive', '.')
+  .action(async (environment: string, options: { full?: boolean; output?: string }) => {
+    const config = await getConfig();
+    await runDownload(environment, config, !!options.full, options.output || '.');
   });
 
 // Parse arguments

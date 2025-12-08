@@ -61,6 +61,11 @@ move-site backup list test
 move-site backup restore staging
 ```
 
+# Download WP Migrate Local archive (for local import)
+```bash
+move-site download staging.example.com -o ./local-imports
+```
+
 ## Commands
 
 | Command | Description |
@@ -70,6 +75,7 @@ move-site backup restore staging
 | `move-site backup create <env>` | Create backup on remote server |
 | `move-site backup list <env>` | List existing backups |
 | `move-site backup download <env>` | Download backups locally |
+| `move-site download <env>` | Generate and download WP Migrate Local archive or full site zip |
 | `move-site backup delete <env>` | Delete backups |
 | `move-site backup restore <env>` | Restore from backup |
 

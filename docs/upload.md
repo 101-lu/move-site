@@ -210,6 +210,26 @@ move-site upload staging.example.com --themes --no-backup
 
 ---
 
+## Download for Local Import (WP Migrate Local)
+
+Use the `download` command to create a WP Migrate Local compatible archive and download it to your local machine. You can choose to create a full site archive with `--full`, or just the WP Migrate Local format (a root `backup.sql` + `wp-content`).
+
+```bash
+# Download WP Migrate Local archive (wp-content + backup.sql)
+move-site download staging.example.com -o ./local-imports
+
+# Download a full site archive (all files)
+move-site download staging.example.com --full -o ./local-imports
+```
+
+Notes:
+- The command requires SSH access to the remote environment.
+- If `zip` is available on the remote server, the archive will be created as a zip file; otherwise, a tar.gz fallback is used.
+- The downloaded archive will be placed in the specified output folder (defaults to the current folder).
+
+
+---
+
 ## File Permissions
 
 Uploaded files are set to `644` (`-rw-r--r--`) to prevent 403 Forbidden errors on web servers. Directories maintain their default permissions from the tar extraction.
