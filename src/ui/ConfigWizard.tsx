@@ -264,7 +264,7 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
     }
     // Also support left arrow to go back, but only if input is empty
     // This allows normal text editing when there's content in the input
-    if (key.leftArrow && canGoBack && inputValue === '') {
+    if ((key.leftArrow || key.backspace || key.delete) && canGoBack && inputValue === '') {
       goBack();
     }
   });
@@ -776,7 +776,11 @@ export const ConfigWizard: FC<ConfigWizardProps> = ({ existingConfig, onComplete
   return (
     <Box flexDirection="column" padding={1}>
       {renderHeader()}
-      <Text dimColor>{canGoBack ? 'Press ESC or ← to go back' : 'Press ESC to cancel'}</Text>
+      <Text dimColor>{canGoBack
+        ?  inputValue === ''
+        ? 'Press ESC or ← to go back'
+        : 'Press ESC to go back'
+        : 'Press ESC to cancel'}</Text>
       <Text> </Text>
       {renderStep()}
     </Box>

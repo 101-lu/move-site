@@ -4,6 +4,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { SSHTransfer } from '../transfer/ssh.js';
 import { BackupSelector, BackupFile } from '../ui/BackupSelector.js';
+import { resolveEnvironmentOrExit } from '../config/resolver.js';
 import type { SiteConfig, UploadOptions } from '../types/index.js';
 
 /**
@@ -65,17 +66,13 @@ function getFoldersToBackup(options: UploadOptions): { name: string; path: strin
 /**
  * Create a backup of files on the remote environment
  */
-export async function runBackup(environment: string, options: UploadOptions, config: SiteConfig): Promise<void> {
+export async function runBackup(environmentId: string, options: UploadOptions, config: SiteConfig): Promise<void> {
+  // Resolve environment (supports exact domain, type, or fuzzy match)
+  const environment = await resolveEnvironmentOrExit(environmentId, config);
   const envConfig = config.environments[environment];
 
-  if (!envConfig) {
-    console.error(`❌ Environment "${environment}" not found in configuration.`);
-    console.error(`Available environments: ${Object.keys(config.environments).join(', ') || 'none'}`);
-    process.exit(1);
-  }
-
   // Check if this is a local environment
-  if (environment === 'local' || !envConfig.ssh) {
+  if (!envConfig.ssh) {
     console.error('❌ Backup command is only available for remote environments.');
     console.error('   For local environments, use your system\'s backup tools.');
     process.exit(1);
@@ -215,13 +212,10 @@ export async function runBackup(environment: string, options: UploadOptions, con
 /**
  * List existing backups on the remote environment
  */
-export async function listBackups(environment: string, config: SiteConfig): Promise<void> {
+export async function listBackups(environmentId: string, config: SiteConfig): Promise<void> {
+  // Resolve environment (supports exact domain, type, or fuzzy match)
+  const environment = await resolveEnvironmentOrExit(environmentId, config);
   const envConfig = config.environments[environment];
-
-  if (!envConfig) {
-    console.error(`❌ Environment "${environment}" not found in configuration.`);
-    process.exit(1);
-  }
 
   if (!envConfig.ssh) {
     console.error('❌ List backups is only available for remote environments.');
@@ -288,10 +282,12 @@ async function getBackupsList(transfer: SSHTransfer, backupsDir: string): Promis
  * Interactive backup deletion
  */
 export async function deleteBackups(
-  environment: string,
+  environmentId: string,
   config: SiteConfig,
   deleteAll: boolean = false
 ): Promise<void> {
+  // Resolve environment (supports exact domain, type, or fuzzy match)
+  const environment = await resolveEnvironmentOrExit(environmentId, config);
   const envConfig = config.environments[environment];
 
   if (!envConfig?.ssh) {
@@ -396,11 +392,13 @@ export async function deleteBackups(
  * Download backups to local machine
  */
 export async function downloadBackups(
-  environment: string,
+  environmentId: string,
   config: SiteConfig,
   downloadAll: boolean = false,
   outputDir: string = './backups'
 ): Promise<void> {
+  // Resolve environment (supports exact domain, type, or fuzzy match)
+  const environment = await resolveEnvironmentOrExit(environmentId, config);
   const envConfig = config.environments[environment];
 
   if (!envConfig?.ssh) {
@@ -483,10 +481,12 @@ export async function downloadBackups(
  * Restore files from a backup on the remote environment
  */
 export async function restoreBackup(
-  environment: string,
+  environmentId: string,
   config: SiteConfig,
   dryRun: boolean = false
 ): Promise<void> {
+  // Resolve environment (supports exact domain, type, or fuzzy match)
+  const environment = await resolveEnvironmentOrExit(environmentId, config);
   const envConfig = config.environments[environment];
 
   if (!envConfig?.ssh) {

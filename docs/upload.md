@@ -10,26 +10,33 @@ The `upload` command transfers files from your local WordPress installation to a
 move-site upload <environment> [options]
 ```
 
+The `<environment>` can be specified in multiple ways:
+- **Exact domain**: `move-site upload staging.example.com --themes`
+- **Environment type**: `move-site upload production --themes` (if only one production environment exists)
+- **Partial match**: `move-site upload staging --themes` (matches `staging.example.com`)
+
+If multiple environments match, you'll get an interactive selector to choose from.
+
 ### Examples
 
 ```bash
-# Upload themes to staging environment
+# Using full domain
 move-site upload staging.example.com --themes
 
-# Upload plugins and uploads to production
-move-site upload example.com --plugins --uploads
+# Using environment type (if unique)
+move-site upload production --plugins --uploads
 
-# Upload everything (files + database + wp-config update)
-move-site upload staging.example.com --all
+# Using partial match
+move-site upload staging --all
 
 # Upload only database (with URL replacement)
-move-site upload staging.example.com --database
+move-site upload test --database
 
 # Preview what would be uploaded (dry run)
-move-site upload staging.example.com --themes --dry-run
+move-site upload prod --themes --dry-run
 
 # Upload files and database, skip backup
-move-site upload staging.example.com --all --no-backup
+move-site upload staging --all --no-backup
 ```
 
 ---

@@ -2,6 +2,7 @@ import { getAdapter } from '../cms/index.js';
 import { SSHTransfer } from '../transfer/ssh.js';
 import { runBackup } from './backup.js';
 import { selectLocalEnvironment, uploadDatabase, updateWpConfig } from './database.js';
+import { resolveEnvironmentOrExit } from '../config/resolver.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs/promises';
@@ -22,14 +23,10 @@ interface FileCategories {
 /**
  * Upload files to a remote environment
  */
-export async function runUpload(environment: string, options: UploadOptions, config: SiteConfig): Promise<void> {
+export async function runUpload(environmentId: string, options: UploadOptions, config: SiteConfig): Promise<void> {
+  // Resolve environment (supports exact domain, type, or fuzzy match)
+  const environment = await resolveEnvironmentOrExit(environmentId, config);
   const envConfig = config.environments[environment];
-
-  if (!envConfig) {
-    console.error(`❌ Environment "${environment}" not found in configuration.`);
-    console.error(`Available environments: ${Object.keys(config.environments).join(', ') || 'none'}`);
-    process.exit(1);
-  }
 
   console.log(`\n📤 Uploading to ${environment}...\n`);
 

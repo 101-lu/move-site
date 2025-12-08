@@ -32,31 +32,33 @@ This creates a `.move-site-config.json` file with your environment settings.
 
 ### 2. Upload Files
 
+You can specify environments by full domain, type (production/test/local), or partial match:
+
 ```bash
-# Upload themes to staging
-move-site upload staging.example.com --themes
+# Using environment type
+move-site upload production --themes
+move-site upload test --plugins --uploads
 
-# Upload plugins and uploads
-move-site upload example.com --plugins --uploads
+# Using partial domain match
+move-site upload staging --all
 
-# Upload everything (files + database)
-move-site upload staging.example.com --all
-
-# Preview what would be uploaded
+# Using full domain
 move-site upload staging.example.com --themes --dry-run
 ```
+
+If multiple environments match (e.g., two test environments), you'll get an interactive selector.
 
 ### 3. Manage Backups
 
 ```bash
 # Create a backup
-move-site backup create staging.example.com --themes
+move-site backup create production --themes
 
 # List backups
-move-site backup list staging.example.com
+move-site backup list test
 
 # Restore from backup
-move-site backup restore staging.example.com
+move-site backup restore staging
 ```
 
 ## Commands

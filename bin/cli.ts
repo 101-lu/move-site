@@ -14,9 +14,9 @@ const require = createRequire(import.meta.url);
 const packageJson = require(join(__dirname, '..', '..', 'package.json'));
 
 /**
- * Helper to load and validate config for an environment
+ * Helper to load config (environment validation happens in commands via resolver)
  */
-async function getConfigForEnv(environment: string) {
+async function getConfig() {
   if (!(await configExists())) {
     console.log('No configuration found. Running setup wizard...\n');
     await runConfigWizard();
@@ -25,12 +25,6 @@ async function getConfigForEnv(environment: string) {
   const config = await loadConfig();
   if (!config) {
     console.error('Failed to load configuration. Please run: move-site config');
-    process.exit(1);
-  }
-
-  if (!config.environments[environment]) {
-    console.error(`Environment "${environment}" not found in configuration.`);
-    console.error(`Available environments: ${Object.keys(config.environments).join(', ')}`);
     process.exit(1);
   }
 
@@ -65,7 +59,7 @@ program
   .option('--verbose', 'Show all files in dry-run mode (instead of first 5)')
   .option('--no-backup', 'Skip creating a backup before uploading')
   .action(async (environment: string, options: UploadOptions) => {
-    const config = await getConfigForEnv(environment);
+    const config = await getConfig();
     await runUpload(environment, options, config);
   });
 
@@ -86,7 +80,7 @@ backupCmd
   .option('--database', 'Backup the database (mysqldump)')
   .option('--dry-run', 'Show what would be backed up without creating backups')
   .action(async (environment: string, options: UploadOptions) => {
-    const config = await getConfigForEnv(environment);
+    const config = await getConfig();
     await runBackup(environment, options, config);
   });
 
@@ -95,7 +89,7 @@ backupCmd
   .command('list <environment>')
   .description('List existing backups on a remote environment')
   .action(async (environment: string) => {
-    const config = await getConfigForEnv(environment);
+    const config = await getConfig();
     await listBackups(environment, config);
   });
 
@@ -105,7 +99,7 @@ backupCmd
   .description('Interactively select and delete backups from a remote environment')
   .option('--all', 'Delete all backups (with confirmation)')
   .action(async (environment: string, options: { all?: boolean }) => {
-    const config = await getConfigForEnv(environment);
+    const config = await getConfig();
     await deleteBackups(environment, config, options.all);
   });
 
@@ -116,7 +110,7 @@ backupCmd
   .option('--all', 'Download all backups')
   .option('-o, --output <path>', 'Local directory to save backups', './backups')
   .action(async (environment: string, options: { all?: boolean; output: string }) => {
-    const config = await getConfigForEnv(environment);
+    const config = await getConfig();
     await downloadBackups(environment, config, options.all, options.output);
   });
 
@@ -126,7 +120,7 @@ backupCmd
   .description('Restore files from a backup on a remote environment')
   .option('--dry-run', 'Show what would be restored without actually restoring')
   .action(async (environment: string, options: { dryRun?: boolean }) => {
-    const config = await getConfigForEnv(environment);
+    const config = await getConfig();
     await restoreBackup(environment, config, options.dryRun);
   });
 
