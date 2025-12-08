@@ -29,6 +29,13 @@ jobs:
 
       - name: Build
         run: npm run build
+      
+      # Ensure npm 11.5.1 or later is installed
+      - name: Update and publish to npm
+        run: npm install -g npm@latest
+      - run: npm ci
+      - run: npm run build --if-present
+      - run: npm test
 
       - name: Publish to npm
         run: npm publish --provenance --access public
