@@ -119,10 +119,25 @@ export class SSHTransfer {
   /**
    * Upload a single file
    */
-  async uploadFile(localPath: string, remotePath: string): Promise<void> {
+  async uploadFile(localPath: string, remotePath: string, onProgress?: ProgressCallback): Promise<void> {
     const remoteDir = path.dirname(remotePath);
     await this.ensureRemoteDir(remoteDir);
-    await this.client.put(localPath, remotePath);
+
+    const total = (await fs.stat(localPath)).size;
+
+    await this.client.fastPut(localPath, remotePath, {
+      step: (totalTransferred: number, chunk: number, totalSize: number) => {
+        if (onProgress) {
+          onProgress({
+            type: 'start', // Using 'start' type for ongoing progress
+            file: path.basename(localPath),
+            completed: totalTransferred,
+            total: totalSize,
+          });
+        }
+      }
+    });
+
     // Set file permissions to 644 (-rw-r--r--) to avoid 403 errors on web servers
     await this.client.chmod(remotePath, 0o644);
   }
@@ -188,10 +203,26 @@ export class SSHTransfer {
   /**
    * Download a single file
    */
-  async downloadFile(remotePath: string, localPath: string): Promise<void> {
+  async downloadFile(remotePath: string, localPath: string, onProgress?: ProgressCallback): Promise<void> {
     const localDir = path.dirname(localPath);
     await fs.mkdir(localDir, { recursive: true });
-    await this.client.get(remotePath, localPath);
+
+    // Get file size first for progress calculation
+    const stats = await this.client.stat(remotePath);
+    const total = stats.size;
+
+    await this.client.fastGet(remotePath, localPath, {
+      step: (totalTransferred: number, chunk: number, totalSize: number) => {
+        if (onProgress) {
+          onProgress({
+            type: 'start', // Using 'start' type for ongoing progress
+            file: path.basename(localPath),
+            completed: totalTransferred,
+            total: totalSize,
+          });
+        }
+      }
+    });
   }
 
   /**

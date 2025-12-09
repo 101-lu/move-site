@@ -128,12 +128,11 @@ backupCmd
 // Download command (placeholder for future)
 program
   .command('download <environment>')
-  .description('Download site archive for WP Migrate Local (zip) or fallback tar.gz')
-  .option('--full', 'Download a full site archive (all files)')
+  .description('Download site archive compatible with WP Migrate/Local WP')
   .option('-o, --output <path>', 'Local folder where to save the archive', '.')
-  .action(async (environment: string, options: { full?: boolean; output?: string }) => {
+  .action(async (environment: string, options: { output?: string }) => {
     const config = await getConfig();
-    await runDownload(environment, config, !!options.full, options.output || '.');
+    await runDownload(environment, config, options.output || '.');
   });
 
 // Parse arguments

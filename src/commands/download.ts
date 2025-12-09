@@ -6,15 +6,18 @@ import { resolveEnvironmentOrExit } from '../config/resolver.js';
 import { SSHTransfer } from '../transfer/ssh.js';
 
 /**
- * Generate a zip name similar to WP Migrate Local format
+ * Generate a zip name similar to WP Migrate format
  */
 function generateWPMLZipName(domain: string): string {
   const now = new Date();
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
-  const yy = String(now.getFullYear()).slice(-2);
-  const sanitized = domain.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-_.]/g, '-');
-  return `${sanitized}-${mm}${dd}${yy}-backup.zip`;
+  const YYYY = now.getFullYear();
+  const MM = String(now.getMonth() + 1).padStart(2, '0');
+  const DD = String(now.getDate()).padStart(2, '0');
+  const HH = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  const SS = String(now.getSeconds()).padStart(2, '0');
+  const sanitized = domain.replace(/https?:\/\//, '').replace(/[^a-zA-Z0-9-_.]/g, '-');
+  return `${sanitized}-${YYYY}${MM}${DD}${HH}${mm}${SS}.zip`;
 }
 
 /**
@@ -45,7 +48,6 @@ function buildMysqlConnectionArgs(db: any): string {
 export async function runDownload(
   environmentId: string,
   config: SiteConfig,
-  full: boolean = false,
   outputDir: string = '.'
 ): Promise<void> {
   const environment = await resolveEnvironmentOrExit(environmentId, config);
@@ -79,18 +81,186 @@ export async function runDownload(
       console.log('⚠️  No database configured for this environment - skipping database dump');
     } else {
       const connArgs = buildMysqlConnectionArgs(db);
-      const dumpCmd = `mysqldump ${connArgs} \"${db.name}\" > \"${tmpDir}/backup.sql\"`;
+
+      // Test database connection first
+      console.log('🔗 Testing database connection...');
+      const testCmd = `mysql ${connArgs} -e "SELECT 1;" \"${db.name}\"`;
+      const testResult = await transfer.exec(testCmd);
+      if (testResult.code !== 0) {
+        console.error('❌ Database connection failed!');
+        console.error('Error details:');
+        if (testResult.stderr) {
+          console.error(testResult.stderr);
+        }
+        if (testResult.stdout) {
+          console.error(testResult.stdout);
+        }
+        console.error('\nPlease check:');
+        console.error('  - Database host, port, and credentials');
+        console.error('  - Database name exists');
+        console.error('  - MySQL/MariaDB server is accessible');
+        console.error('  - Firewall/network connectivity');
+        process.exit(1);
+      }
+      console.log('   ✅ Database connection successful');
+
+      // Create database dump with WP Migrate compatible format
+      const dumpCmd = `mysqldump --single-transaction --routines --triggers --add-drop-table --skip-lock-tables --skip-add-locks --extended-insert --no-tablespaces --default-character-set=utf8mb4 ${connArgs} \"${db.name}\" > \"${tmpDir}/database_raw.sql\"`;
       console.log('🗄️  Creating database dump...');
       const dumpResult = await transfer.exec(dumpCmd);
       if (dumpResult.code !== 0) {
-        console.log(`   ⚠️  mysqldump failed: ${dumpResult.stderr || dumpResult.stdout}`);
-      } else {
-        console.log('   ✅ Database dump created');
+        console.error('❌ Database dump failed!');
+        console.error('Error details:');
+        if (dumpResult.stderr) {
+          console.error(dumpResult.stderr);
+        }
+        if (dumpResult.stdout) {
+          console.error(dumpResult.stdout);
+        }
+        process.exit(1);
       }
+
+      // Check if dump file has content
+      const checkCmd = `if [ -s \"${tmpDir}/database_raw.sql\" ]; then echo "has_content"; else echo "empty"; fi`;
+      const checkResult = await transfer.exec(checkCmd);
+      if (checkResult.stdout.trim() !== "has_content") {
+        console.error('❌ Database dump file is empty. This should not happen if the connection test passed.');
+        console.error('Please check your database configuration.');
+        process.exit(1);
+      }
+
+      // Create WP Migrate compatible header and combine with dump
+      const now = new Date();
+      const timestamp = now.toUTCString().replace('GMT', 'UTC');
+      const dayName = now.toLocaleDateString('en-US', { weekday: 'long' });
+      const dateStr = `${dayName} ${now.getDate()}. ${now.toLocaleDateString('en-US', { month: 'long' })} ${now.getFullYear()} ${now.toTimeString().split(' ')[0]} UTC`;
+
+      // Get table list for header
+      const tableCmd = `mysql ${connArgs} -e "SHOW TABLES;" \"${db.name}\" | tail -n +2 | tr '\n' ',' | sed 's/,$//'`;
+      const tableResult = await transfer.exec(tableCmd);
+      const tables = tableResult.stdout.trim() || 'N/A';
+
+      // Get post types (simplified)
+      const postTypes = 'revision, about, aboutus, acf-field, acf-field-group, activities, attachment, certificate_types, certificates, contacts, contactspage, flamingo_contact, flamingo_inbound, footer, jobs, jobspage, nav_menu_item, page, post, qualitylabels, wp_navigation, wpcf7_contact_form';
+
+      const header = `# WordPress MySQL database migration
+#
+# Generated: ${dateStr}
+# Hostname: localhost:3306
+# Database: \`${db.name}\`
+# URL: ${envConfig.url}
+# Path: ${remotePath}
+# Tables: ${tables}
+# Table Prefix: ${db.tablePrefix || 'wp_'}
+# Post Types: ${postTypes}
+# Protocol: https
+# Multisite: false
+# Subsite Export: false
+#
+
+/*!40101 SET NAMES utf8 */;
+
+SET sql_mode='NO_AUTO_VALUE_ON_ZERO';
+`;
+
+      // Create header file
+      const headerCmd = `cat > \"${tmpDir}/database.sql\" << 'EOF'
+${header}
+EOF`;
+      const headerResult = await transfer.exec(headerCmd);
+      if (headerResult.code !== 0) {
+        console.error('❌ Failed to create database header!');
+        console.error('Error details:');
+        if (headerResult.stderr) {
+          console.error(headerResult.stderr);
+        }
+        if (headerResult.stdout) {
+          console.error(headerResult.stdout);
+        }
+        process.exit(1);
+      }
+
+      // Filter database dump to remove MySQL version-specific commands
+      const filterCmd = `grep -v '^/\\*![0-9]' \"${tmpDir}/database_raw.sql\" >> \"${tmpDir}/database.sql\"`;
+      const filterResult = await transfer.exec(filterCmd);
+      if (filterResult.code !== 0) {
+        console.error('❌ Failed to filter database dump!');
+        console.error('Error details:');
+        if (filterResult.stderr) {
+          console.error(filterResult.stderr);
+        }
+        if (filterResult.stdout) {
+          console.error(filterResult.stdout);
+        }
+        process.exit(1);
+      }
+
+      // Cleanup temporary file
+      const cleanupCmd = `rm \"${tmpDir}/database_raw.sql\"`;
+      const cleanupResult = await transfer.exec(cleanupCmd);
+      if (cleanupResult.code !== 0) {
+        console.error('❌ Failed to cleanup temporary files!');
+        console.error('Error details:');
+        if (cleanupResult.stderr) {
+          console.error(cleanupResult.stderr);
+        }
+        if (cleanupResult.stdout) {
+          console.error(cleanupResult.stdout);
+        }
+        process.exit(1);
+      }
+
+      console.log('   ✅ Database dump created');
+    }
+
+    // Copy all WordPress files to files/ subdirectory
+    console.log('📁 Copying WordPress files...');
+
+    // Check if rsync is available
+    const rsyncCheck = await transfer.exec('command -v rsync || true');
+    const rsyncExists = rsyncCheck.stdout.trim().length > 0;
+
+    let copyResult;
+    if (rsyncExists) {
+      // Build rsync exclude options from config
+      const excludeOpts = config.options.excludePatterns.map(pattern => `--exclude='${pattern}'`).join(' ');
+      const copyCmd = `rsync -av ${excludeOpts} \"${remotePath}/\" \"${tmpDir}/files/\"`;
+      copyResult = await transfer.exec(copyCmd);
+    } else {
+      // Fallback: use tar to copy files excluding patterns
+      console.log('   ⚠️  rsync not available, using tar (may include some excluded files)');
+      const excludeOpts = config.options.excludePatterns.map(pattern => `--exclude='${pattern}'`).join(' ');
+      const copyCmd = `mkdir -p \"${tmpDir}/files\" && cd \"${remotePath}\" && tar -cf - ${excludeOpts} . | tar -xf - -C \"${tmpDir}/files\"`;
+      copyResult = await transfer.exec(copyCmd);
+    }
+
+    if (copyResult.code !== 0) {
+      console.log(`   ⚠️  File copy failed: ${copyResult.stderr || copyResult.stdout}`);
+    } else {
+      console.log('   ✅ Files copied');
     }
 
     const zipName = generateWPMLZipName(environment);
-    let remoteZip = `${tmpDir}/${zipName}`;
+
+    // Create wpmigrate-export.json (WP Migrate format)
+    const wpMigrateData = {
+      name: config.name || environment,
+      domain: envConfig.url,
+      path: remotePath,
+      wpVersion: "6.9", // TODO: detect actual version
+      services: {
+        php: { name: "php", version: "8.0.30" }, // TODO: detect actual versions
+        mariadb: { name: "mariadb", version: "10.6.18-MariaDB" },
+        apache: { name: "apache" }
+      },
+      wpMigrate: { version: "2.7.7" }
+    };
+    const wpMigrateJson = JSON.stringify(wpMigrateData);
+    const wpMigrateCmd = `cat > \"${tmpDir}/wpmigrate-export.json\" << 'EOF'\n${wpMigrateJson}\nEOF`;
+    await transfer.exec(wpMigrateCmd);
+    console.log('   ✅ Export metadata created');
+
+    let remoteZip = `${backupsDir}/${zipName}`;
 
     // Check if zip command exists on remote
     const zipCheck = await transfer.exec('command -v zip || true');
@@ -98,58 +268,20 @@ export async function runDownload(
 
     if (!zipExists) {
       console.log('⚠️  zip utility not found on remote. Attempting to use tar.gz instead.');
-    }
-
-    if (full) {
-      // Create an archive of all files in remotePath
-      if (zipExists) {
-        // Use zip to create a full zip
-        console.log('📦 Creating full site zip...');
-        // Exclude backups folder to avoid recursion
-        const zipCmd = `cd \"${remotePath}\" && zip -r \"${remoteZip}\" . -x './backups/*'`;
-        const zipResult = await transfer.exec(zipCmd);
-        if (zipResult.code !== 0) {
-          throw new Error(`Failed to create zip: ${zipResult.stderr}`);
-        }
-      } else {
-        // Fall back to tar.gz
-        console.log('📦 Creating full site tar.gz (fallback)...');
-        const tarPath = `${tmpDir}/${zipName.replace(/\.zip$/, '.tar.gz')}`;
-        const tarCmd = `cd \"${remotePath}\" && tar -czf \"${tarPath}\" --exclude='./backups' .`;
-        const tarResult = await transfer.exec(tarCmd);
-        if (tarResult.code !== 0) {
-          throw new Error(`Failed to create tar.gz: ${tarResult.stderr}`);
-        }
-        // Update remoteZip to tar.gz path
-        // eslint-disable-next-line no-param-reassign
-        (remoteZip as any) = tarPath; // cast to any to assign; not ideal but ok
+      const tarPath = `${remoteZip.replace(/\.zip$/, '.tar.gz')}`;
+      const tarCmd = `cd \"${tmpDir}\" && tar -czf \"${tarPath}\" .`;
+      const tarResult = await transfer.exec(tarCmd);
+      if (tarResult.code !== 0) {
+        throw new Error(`Failed to create tar.gz: ${tarResult.stderr}`);
       }
+      remoteZip = tarPath;
     } else {
-      // WP Migrate Local format: backup.sql + wp-content
-      if (zipExists) {
-        console.log('📦 Creating wp-content + backup.zip...');
-        // zip the wp-content directory and then add backup.sql (if exists)
-        const zipCmdParts: string[] = [];
-        // Create zip from wp-content relative to remotePath
-        zipCmdParts.push(`cd \"${remotePath}\" && zip -r \"${remoteZip}\" wp-content || true`);
-        // If backup.sql exists in tmpDir, add it to zip
-        zipCmdParts.push(`if [ -f \"${tmpDir}/backup.sql\" ]; then cd \"${tmpDir}\" && zip -u \"${remoteZip}\" backup.sql; fi`);
-        const zipCmd = zipCmdParts.join(' && ');
-        const zipResult = await transfer.exec(zipCmd);
-        if (zipResult.code !== 0) {
-          throw new Error(`Failed to create wpml zip: ${zipResult.stderr || zipResult.stdout}`);
-        }
-      } else {
-        // tar fallback - create tar.gz containing backup.sql and wp-content
-        const tarPath = `${tmpDir}/${zipName.replace(/\.zip$/, '.tar.gz')}`;
-        console.log('📦 Creating wp-content + backup.tar.gz (fallback)...');
-        const tarCmd = `mkdir -p \"${tmpDir}\" && cp -r \"${remotePath}/wp-content\" \"${tmpDir}/wp-content\" 2>/dev/null || true && tar -czf \"${tarPath}\" -C \"${tmpDir}\" .`;
-        const tarResult = await transfer.exec(tarCmd);
-        if (tarResult.code !== 0) {
-          throw new Error(`Failed to create tar.gz: ${tarResult.stderr || tarResult.stdout}`);
-        }
-        // eslint-disable-next-line no-param-reassign
-        (remoteZip as any) = tarPath;
+      // Create zip from tmpDir contents
+      console.log('📦 Creating WP Migrate compatible zip...');
+      const zipCmd = `cd \"${tmpDir}\" && zip -r \"${remoteZip}\" .`;
+      const zipResult = await transfer.exec(zipCmd);
+      if (zipResult.code !== 0) {
+        throw new Error(`Failed to create zip: ${zipResult.stderr}`);
       }
     }
 
@@ -158,8 +290,31 @@ export async function runDownload(
     const localPath = path.join(outputDir, `${zipName}`);
 
     console.log(`\n📥 Downloading archive to ${localPath}...`);
-    await transfer.downloadFile(remoteZip, localPath);
-    console.log('   ✅ Download complete');
+
+    let lastProgressTime = Date.now();
+    let lastTransferred = 0;
+    let speed = 0;
+
+    await transfer.downloadFile(remoteZip, localPath, (progress) => {
+      const now = Date.now();
+      const timeDiff = (now - lastProgressTime) / 1000; // seconds
+
+      if (timeDiff >= 1) { // Update every second
+        const bytesDiff = progress.completed - lastTransferred;
+        speed = bytesDiff / timeDiff; // bytes per second
+
+        const percentage = progress.total > 0 ? Math.round((progress.completed / progress.total) * 100) : 0;
+        const completedMB = (progress.completed / (1024 * 1024)).toFixed(1);
+        const totalMB = (progress.total / (1024 * 1024)).toFixed(1);
+        const speedMB = (speed / (1024 * 1024)).toFixed(1);
+
+        process.stdout.write(`\r   📥 ${percentage}% (${completedMB}MB / ${totalMB}MB) at ${speedMB}MB/s`);
+        lastProgressTime = now;
+        lastTransferred = progress.completed;
+      }
+    });
+
+    console.log('\n   ✅ Download complete');
 
     // Cleanup remote temporary files
     await transfer.exec(`rm -rf "${tmpDir}" ${remoteZip}`);

@@ -205,8 +205,31 @@ export async function runUpload(environmentId: string, options: UploadOptions, c
 
     // Upload the archive
     console.log('\n📤 Uploading archive...');
-    await transfer.uploadFile(localArchivePath, remoteArchivePath);
-    console.log('   ✅ Archive uploaded');
+
+    let lastProgressTime = Date.now();
+    let lastTransferred = 0;
+    let speed = 0;
+
+    await transfer.uploadFile(localArchivePath, remoteArchivePath, (progress) => {
+      const now = Date.now();
+      const timeDiff = (now - lastProgressTime) / 1000; // seconds
+
+      if (timeDiff >= 1) { // Update every second
+        const bytesDiff = progress.completed - lastTransferred;
+        speed = bytesDiff / timeDiff; // bytes per second
+
+        const percentage = progress.total > 0 ? Math.round((progress.completed / progress.total) * 100) : 0;
+        const completedMB = (progress.completed / (1024 * 1024)).toFixed(1);
+        const totalMB = (progress.total / (1024 * 1024)).toFixed(1);
+        const speedMB = (speed / (1024 * 1024)).toFixed(1);
+
+        process.stdout.write(`\r   📤 ${percentage}% (${completedMB}MB / ${totalMB}MB) at ${speedMB}MB/s`);
+        lastProgressTime = now;
+        lastTransferred = progress.completed;
+      }
+    });
+
+    console.log('\n   ✅ Archive uploaded');
 
     // Extract on server
     console.log('\n📂 Extracting on server...');
